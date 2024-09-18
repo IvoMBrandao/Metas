@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react'; 
 import { View, Text, StyleSheet, Button } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -45,11 +45,12 @@ const MonthSalesScreen = ({ route, navigation }) => {
   const metaDays = parseInt(meta.salesDays, 10) || 0;
   const daysRemaining = metaDays - daysSold;
 
-  // Calcular a Diária Esperada
+  // Calcular o Valor de Venda Esperado
+  const expectedSalesValue = (metaValue / metaDays) * daysSold;
+
+  // Calcular a Diária para os dias restantes
   const remainingValue = metaValue - soldValue;
-  const dailyExpected = daysRemaining > 0 ? remainingValue / daysRemaining : 0;
-
-
+  const dailyGoal = daysRemaining > 0 ? remainingValue / daysRemaining : 0;
 
   return (
     <View style={styles.container}>
@@ -57,8 +58,8 @@ const MonthSalesScreen = ({ route, navigation }) => {
       <Text style={styles.subtitle}>Valor da Meta: R$ {metaValue.toFixed(2)}</Text>
       <Text style={styles.subtitle}>Valor Vendido no Mês: R$ {soldValue.toFixed(2)}</Text>
       <Text style={styles.subtitle}>Dias Restantes: {daysRemaining}</Text>
-      <Text style={styles.subtitle}>Diária: R$ {dailyExpected.toFixed(2)}</Text>
-     
+      <Text style={styles.subtitle}>Diária: R$ {dailyGoal.toFixed(2)}</Text>
+      <Text style={styles.subtitle}>Valor de Venda Esperado: R$ {expectedSalesValue.toFixed(2)}</Text>
       <Button title="Adicionar Venda" onPress={() => navigation.navigate('AddSaleScreen', { metaId })} />
     </View>
   );

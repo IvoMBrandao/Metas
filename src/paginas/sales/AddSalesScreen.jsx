@@ -1,61 +1,76 @@
-// src/screens/AddSalesScreen.js
+// src/screens/AddSaleScreen.js
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
+import { Calendar } from 'react-native-calendars';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const AddSalesScreen = ({ route, navigation }) => {
+const AddSaleScreen = ({ route, navigation }) => {
   const { metaId } = route.params;
+  const [selectedDate, setSelectedDate] = useState('');
   const [saleValue, setSaleValue] = useState('');
 
-  const handleAddSale = async () => {
-    if (!saleValue) {
-      Alert.alert('Erro', 'O valor da venda é obrigatório.');
+  const handleDateSelect = (day) => {
+    setSelectedDate(day.dateString);
+  };
+
+  const addSale = async () => {
+    if (!selectedDate || !saleValue) {
+      Alert.alert('Erro', 'Por favor, selecione uma data e insira o valor da venda.');
       return;
     }
 
     try {
       const savedData = await AsyncStorage.getItem('financeData');
-      if (savedData) {
-        const data = JSON.parse(savedData);
-        const metaIndex = data.findIndex(item => item.id === metaId);
-        if (metaIndex > -1) {
-          const newSale = {
-            id: Date.now().toString(),
-            value: parseFloat(saleValue),
-          };
-          data[metaIndex].sales = data[metaIndex].sales ? [...data[metaIndex].sales, newSale] : [newSale];
-          await AsyncStorage.setItem('financeData', JSON.stringify(data));
-          Alert.alert('Sucesso', 'Venda adicionada com sucesso.');
-          setSaleValue('');
-        }
+      const parsedData = savedData ? JSON.parse(savedData) : [];
+      const metaIndex = parsedData.findIndex(item => item.id === metaId);
+
+      if (metaIndex === -1) {
+        Alert.alert('Erro', 'Meta não encontrada.');
+        return;
       }
+
+      // Adiciona a venda ao item selecionado
+      parsedData[metaIndex].sales = parsedData[metaIndex].sales || [];
+      parsedData[metaIndex].sales.push({
+        id: Date.now().toString(), // Gerar um ID único para a venda
+        date: selectedDate,
+        value: parseFloat(saleValue),
+      });
+
+      await AsyncStorage.setItem('financeData', JSON.stringify(parsedData));
+      Alert.alert('Sucesso', 'Venda adicionada com sucesso!');
+      navigation.goBack(); // Voltar para a tela anterior
     } catch (error) {
       console.log('Erro ao adicionar venda', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao adicionar a venda.');
     }
   };
 
-  const navigateToSalesDetail = () => {
-    navigation.navigate('SalesDetailScreen', { metaId });
+  const goToSalesDetail = () => {
+    if (!selectedDate) {
+      Alert.alert('Erro', 'Por favor, selecione uma data.');
+      return;
+    }
+
+    navigation.navigate('SalesDetailScreen', { metaId, date: selectedDate });
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Adicionar Venda</Text>
+      <Calendar
+        onDayPress={handleDateSelect}
+        markedDates={{ [selectedDate]: { selected: true, marked: true, selectedColor: 'blue' } }}
+      />
       <TextInput
         style={styles.input}
         placeholder="Valor da Venda"
-        keyboardType="numeric"
         value={saleValue}
+        keyboardType="numeric"
         onChangeText={setSaleValue}
       />
-      <View style={styles.buttonContainer}>
-        <Button title="Adicionar Venda" onPress={handleAddSale} />
-        <Button
-          title="Ver Detalhes das Vendas"
-          onPress={navigateToSalesDetail}
-          color="#3498DB"
-        />
-      </View>
+      <Button title="Adicionar Venda" onPress={addSale} />
+      <Button title="Ver Vendas do Dia" onPress={goToSalesDetail} />
     </View>
   );
 };
@@ -68,19 +83,15 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 24,
+    textAlign: 'center',
     marginBottom: 20,
   },
   input: {
-    height: 40,
-    borderColor: '#BDC3C7',
-    borderWidth: 1,
+    borderBottomWidth: 1,
+    borderBottomColor: '#7F8C8D',
     marginBottom: 20,
-    paddingHorizontal: 10,
-  },
-  buttonContainer: {
-    flexDirection: 'column',
-    gap: 15,
+    padding: 5,
   },
 });
 
-export default AddSalesScreen;
+export default AddSaleScreen;

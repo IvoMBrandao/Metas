@@ -7,6 +7,7 @@ import EditMetaScreen from './paginas/metas/EditMeta';
 import AddSalesScreen from './paginas/sales/AddSalesScreen';
 import SalesDetailScreen from './paginas/sales/SalesDetailScreen'
 import EditSaleScreen from './paginas/sales/EditSaleScreen';
+import MonthSalesScreen from './paginas/Relatorios/MonthSalesScreen';
 
 
 const Stack = createStackNavigator();
@@ -21,6 +22,7 @@ export default function Routes() {
         <Stack.Screen name="AddSalesScreen" component={AddSalesScreen} />
         <Stack.Screen name="SalesDetailScreen" component={SalesDetailScreen} />
         <Stack.Screen name="EditSaleScreen" component={EditSaleScreen} />
+       < Stack.Screen name="MonthSalesScreen" component={MonthSalesScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

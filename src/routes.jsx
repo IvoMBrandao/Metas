@@ -20,7 +20,7 @@ export default function Routes() {
         <Stack.Screen name="EditMeta" component={EditMetaScreen} />
         <Stack.Screen name="AddSalesScreen" component={AddSalesScreen} />
         <Stack.Screen name="SalesDetailScreen" component={SalesDetailScreen} />
-        <Stack.Screen name="EditSale" component={EditSaleScreen} />
+        <Stack.Screen name="EditSaleScreen" component={EditSaleScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

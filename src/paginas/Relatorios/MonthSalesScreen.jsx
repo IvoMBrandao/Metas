@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'; 
 import { View, Text, StyleSheet, Button } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import SalesProgressChart from '../../componentes/SalesProgressChart';  // Importar o componente
 
 const MonthSalesScreen = ({ route, navigation }) => {
   const { metaId } = route.params;
@@ -60,6 +61,15 @@ const MonthSalesScreen = ({ route, navigation }) => {
       <Text style={styles.subtitle}>Dias Restantes: {daysRemaining}</Text>
       <Text style={styles.subtitle}>Diária: R$ {dailyGoal.toFixed(2)}</Text>
       <Text style={styles.subtitle}>Valor de Venda Esperado: R$ {expectedSalesValue.toFixed(2)}</Text>
+      
+      {/* Adicionar o componente do gráfico */}
+      <SalesProgressChart 
+        soldValue={soldValue} 
+        metaValue={metaValue} 
+        expectedSalesValue={expectedSalesValue} 
+        dailyGoal={dailyGoal} 
+      />
+
       <Button title="Adicionar Venda" onPress={() => navigation.navigate('AddSaleScreen', { metaId })} />
     </View>
   );

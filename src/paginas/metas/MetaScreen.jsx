@@ -56,16 +56,15 @@ const MetaScreen = ({ navigation }) => {
     );
   };
 
-  const handleEdit = (item) => {
-    navigation.navigate('EditMeta', { item });
+  const handleEdit = (item, index) => {
+    navigation.navigate('EditMetaScreen', { item, index });
   };
 
   const handlePress = (item) => {
     navigation.navigate('AddSalesScreen', { metaId: item.id });
   };
-  
 
-  const renderItem = ({ item }) => (
+  const renderItem = ({ item, index }) => (
     <TouchableOpacity
       style={styles.listItem}
       onPress={() => handlePress(item)}
@@ -77,7 +76,7 @@ const MetaScreen = ({ navigation }) => {
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={[styles.button, styles.editButton]}
-          onPress={() => handleEdit(item)}
+          onPress={() => handleEdit(item, index)}
         >
           <Text style={styles.buttonText}>Editar</Text>
         </TouchableOpacity>

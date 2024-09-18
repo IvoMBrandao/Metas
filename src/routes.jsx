@@ -18,7 +18,7 @@ export default function Routes() {
       <Stack.Navigator initialRouteName="Meta">
         <Stack.Screen name="Meta" component={MetaScreen} />
         <Stack.Screen name="AddMeta" component={AddMetaScreen} />
-        <Stack.Screen name="EditMeta" component={EditMetaScreen} />
+        <Stack.Screen name="EditMetaScreen" component={EditMetaScreen} />
         <Stack.Screen name="AddSalesScreen" component={AddSalesScreen} />
         <Stack.Screen name="SalesDetailScreen" component={SalesDetailScreen} />
         <Stack.Screen name="EditSaleScreen" component={EditSaleScreen} />

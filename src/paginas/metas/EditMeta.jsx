@@ -7,19 +7,19 @@ const EditMetaScreen = ({ route, navigation }) => {
   const { item, index } = route.params;
   const [name, setName] = useState(item.name);
   const [value, setValue] = useState(item.value);
-  const [days, setDays] = useState(item.days);
+  const [days, setDays] = useState(item.salesDays); // Corrigido para `salesDays`
 
   useEffect(() => {
     setName(item.name);
     setValue(item.value);
-    setDays(item.days);
+    setDays(item.salesDays); // Corrigido para `salesDays`
   }, [item]);
 
   const saveChanges = async () => {
     try {
       const savedData = await AsyncStorage.getItem('financeData');
       const parsedData = savedData ? JSON.parse(savedData) : [];
-      parsedData[index] = { name, value, days };
+      parsedData[index] = { ...parsedData[index], name, value, salesDays: days }; // Corrigido para `salesDays`
       await AsyncStorage.setItem('financeData', JSON.stringify(parsedData));
       navigation.navigate('Meta'); // Voltar para a tela "Meta"
     } catch (error) {

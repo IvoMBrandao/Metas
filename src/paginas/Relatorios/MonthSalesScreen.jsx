@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Button } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BarChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
+import Card from '../../componentes/Card'; // Certifique-se de ajustar o caminho conforme necessário
 
 const MonthSalesScreen = ({ route, navigation }) => {
   const { metaId } = route.params;
@@ -51,6 +52,7 @@ const MonthSalesScreen = ({ route, navigation }) => {
   const dailyGoal = daysRemaining > 0 ? remainingValue / daysRemaining : 0;
 
   // Calcular o Valor de Venda Esperado
+  const dailySold = daysSold > 0 ? soldValue / daysSold : 0;
   const projectedValue = daysSold > 0 ? (soldValue / daysSold) * metaDays : 0;
 
   // Calcular percentuais
@@ -74,19 +76,23 @@ const MonthSalesScreen = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
+          
       <Text style={styles.title}>Resumo da Meta</Text>
-      <Text style={styles.subtitle}>Valor da Meta: R$ {metaValue.toFixed(2)}</Text>
-      <Text style={styles.subtitle}>Valor Vendido no Mês: R$ {soldValue.toFixed(2)}</Text>
-      <Text style={styles.subtitle}>Dias Restantes: {daysRemaining}</Text>
-      <Text style={styles.subtitle}>Diária: R$ {dailyGoal.toFixed(2)}</Text>
-      <Text style={styles.subtitle}>Valor de Venda Esperado: R$ {projectedValue.toFixed(2)}</Text>
-      <Text style={styles.subtitle}>Percentual Vendido: {percentSold.toFixed(2)}%</Text>
-      <Text style={styles.subtitle}>Percentual Projetado: {percentProjected.toFixed(2)}%</Text>
+
+      <Card title="Informações da Meta">
+        <Text style={styles.subtitle}>Valor da Meta: R$ {metaValue.toFixed(2)}</Text>
+        <Text style={styles.subtitle}>Valor Vendido no Mês: R$ {soldValue.toFixed(2)}</Text>
+        <Text style={styles.subtitle}>Dias Restantes: {daysRemaining}</Text>
+        <Text style={styles.subtitle}>Diária: R$ {dailyGoal.toFixed(2)}</Text>
+        <Text style={styles.subtitle}>Valor de Venda Esperado: R$ {projectedValue.toFixed(2)}</Text>
+        <Text style={styles.subtitle}>Percentual Vendido: {percentSold.toFixed(2)}%</Text>
+        <Text style={styles.subtitle}>Percentual Projetado: {percentProjected.toFixed(2)}%</Text>
+      </Card>
 
       <BarChart
         data={chartData}
         width={Dimensions.get('window').width - 40}
-        height={220}
+        height={250}
         yAxisLabel="%"
         chartConfig={{
           backgroundColor: '#ffffff',
@@ -100,7 +106,8 @@ const MonthSalesScreen = ({ route, navigation }) => {
         style={styles.chart}
       />
 
-      <Button title="Adicionar Venda" onPress={() => navigation.navigate('AddSaleScreen', { metaId })} />
+
+
     </View>
   );
 };
@@ -117,7 +124,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 18,
-    marginBottom: 20,
+    marginBottom: 10,
   },
   chart: {
     marginVertical: 8,

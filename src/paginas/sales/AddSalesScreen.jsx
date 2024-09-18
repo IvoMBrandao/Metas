@@ -39,7 +39,7 @@ const AddSaleScreen = ({ route, navigation }) => {
 
       await AsyncStorage.setItem('financeData', JSON.stringify(parsedData));
       Alert.alert('Sucesso', 'Venda adicionada com sucesso!');
-      navigation.goBack(); // Voltar para a tela anterior
+     
     } catch (error) {
       console.log('Erro ao adicionar venda', error);
       Alert.alert('Erro', 'Ocorreu um erro ao adicionar a venda.');

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'; 
 import { View, Text, StyleSheet, Button } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import SalesProgressChart from '../../componentes/SalesProgressChart';  // Importar o componente
+import { BarChart } from 'react-native-chart-kit';
+import { Dimensions } from 'react-native';
 
 const MonthSalesScreen = ({ route, navigation }) => {
   const { metaId } = route.params;
@@ -40,18 +41,36 @@ const MonthSalesScreen = ({ route, navigation }) => {
     );
   }
 
-  // Calcular o valor vendido até o momento e os dias restantes
   const soldValue = parseFloat(meta.sales?.reduce((total, sale) => total + sale.value, 0) || 0);
   const metaValue = parseFloat(meta.value);
   const metaDays = parseInt(meta.salesDays, 10) || 0;
   const daysRemaining = metaDays - daysSold;
 
-  // Calcular o Valor de Venda Esperado
-  const expectedSalesValue = (metaValue / metaDays) * daysSold;
-
-  // Calcular a Diária para os dias restantes
+  // Calcular a Diária Esperada
   const remainingValue = metaValue - soldValue;
   const dailyGoal = daysRemaining > 0 ? remainingValue / daysRemaining : 0;
+
+  // Calcular o Valor de Venda Esperado
+  const projectedValue = daysSold > 0 ? (soldValue / daysSold) * metaDays : 0;
+
+  // Calcular percentuais
+  const percentSold = (soldValue / metaValue) * 100;
+  const percentProjected = (projectedValue / metaValue) * 100;
+
+  // Prevenir valores negativos
+  const remainingMeta = Math.max(0, (metaValue - soldValue) / metaValue * 100);
+
+  const chartData = {
+    labels: ['Vendidos', 'Projeção'],
+    datasets: [
+      {
+        data: [
+          percentSold,
+          percentProjected
+        ]
+      }
+    ]
+  };
 
   return (
     <View style={styles.container}>
@@ -60,14 +79,25 @@ const MonthSalesScreen = ({ route, navigation }) => {
       <Text style={styles.subtitle}>Valor Vendido no Mês: R$ {soldValue.toFixed(2)}</Text>
       <Text style={styles.subtitle}>Dias Restantes: {daysRemaining}</Text>
       <Text style={styles.subtitle}>Diária: R$ {dailyGoal.toFixed(2)}</Text>
-      <Text style={styles.subtitle}>Valor de Venda Esperado: R$ {expectedSalesValue.toFixed(2)}</Text>
-      
-      {/* Adicionar o componente do gráfico */}
-      <SalesProgressChart 
-        soldValue={soldValue} 
-        metaValue={metaValue} 
-        expectedSalesValue={expectedSalesValue} 
-        dailyGoal={dailyGoal} 
+      <Text style={styles.subtitle}>Valor de Venda Esperado: R$ {projectedValue.toFixed(2)}</Text>
+      <Text style={styles.subtitle}>Percentual Vendido: {percentSold.toFixed(2)}%</Text>
+      <Text style={styles.subtitle}>Percentual Projetado: {percentProjected.toFixed(2)}%</Text>
+
+      <BarChart
+        data={chartData}
+        width={Dimensions.get('window').width - 40}
+        height={220}
+        yAxisLabel="%"
+        chartConfig={{
+          backgroundColor: '#ffffff',
+          backgroundGradientFrom: '#ffffff',
+          backgroundGradientTo: '#ffffff',
+          decimalPlaces: 2,
+          color: (opacity = 1) => `rgba(0, 0, 255, ${opacity})`,
+          labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+          barPercentage: 0.5,
+        }}
+        style={styles.chart}
       />
 
       <Button title="Adicionar Venda" onPress={() => navigation.navigate('AddSaleScreen', { metaId })} />
@@ -88,6 +118,10 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 18,
     marginBottom: 20,
+  },
+  chart: {
+    marginVertical: 8,
+    borderRadius: 16,
   },
 });
 

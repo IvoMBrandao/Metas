@@ -2,7 +2,7 @@
   "expo": {
     "name": "Metas",
     "slug": "Metas",
-    "version": "1.0.0",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -20,16 +20,22 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.yuriperro.Metas"
+      "package": "com.devbrand.Metas",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "INTERNET"
+      ],
+      "versionCode": 5
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "b97ca159-f1a5-4aac-806e-67b20b8e7cec"
+        "projectId": "7ddeb9de-eb24-40aa-8b1c-fee90fa18d9b"
       }
-    },
-    "owner": "yuriperro"
+    }
   }
 }

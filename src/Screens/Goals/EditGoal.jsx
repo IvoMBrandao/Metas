@@ -21,7 +21,7 @@ const EditMetaScreen = ({ route, navigation }) => {
       const parsedData = savedData ? JSON.parse(savedData) : [];
       parsedData[index] = { ...parsedData[index], name, value, salesDays: days }; // Corrigido para `salesDays`
       await AsyncStorage.setItem('financeData', JSON.stringify(parsedData));
-      navigation.navigate('Report'); // Voltar para a tela "Meta"
+      navigation.navigate('Goal'); // Voltar para a tela "Meta"
     } catch (error) {
       console.log('Erro ao salvar alterações', error);
     }

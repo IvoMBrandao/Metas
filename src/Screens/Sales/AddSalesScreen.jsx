@@ -56,7 +56,7 @@ const AddSaleScreen = ({ route, navigation }) => {
   };
 
   const goToMonthSales = () => {
-    navigation.navigate('MonthSalesScreen', { metaId, monthYear: selectedDate.substr(0, 7) });
+    navigation.navigate('Report', { metaId, monthYear: selectedDate.substr(0, 7) });
   };
 
   return (

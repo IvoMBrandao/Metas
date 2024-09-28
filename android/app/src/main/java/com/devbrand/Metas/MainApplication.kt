@@ -1,4 +1,4 @@
-package com.yuriperro.Metas
+package com.devbrand.Metas
 
 import android.app.Application
 import android.content.res.Configuration

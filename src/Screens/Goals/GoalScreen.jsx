@@ -62,7 +62,7 @@ const MetaScreen = ({ navigation }) => {
   };
 
   const handleEdit = (item, index) => {
-    navigation.navigate('EditMetaScreen', { item, index });
+    navigation.navigate('EditGoal', { item, index });
   };
 
   const handlePress = (item) => {
@@ -99,7 +99,7 @@ const MetaScreen = ({ navigation }) => {
         renderItem={renderItem}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
       />
-      <Button title='Adicionar' onPress={() => navigation.navigate('AddMeta')} />
+      <Button title='Adicionar' onPress={() => navigation.navigate('AddGoal')} />
     </View>
   );
 };

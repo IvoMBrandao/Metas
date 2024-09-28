@@ -2,7 +2,7 @@
   "expo": {
     "name": "Metas",
     "slug": "Metas",
-    "version": "1.0.4",
+    "version": "1.0.10",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -27,7 +27,7 @@
         "WRITE_EXTERNAL_STORAGE",
         "INTERNET"
       ],
-      "versionCode": 5
+      "versionCode": 11
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -36,6 +36,10 @@
       "eas": {
         "projectId": "7ddeb9de-eb24-40aa-8b1c-fee90fa18d9b"
       }
+    },
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/7ddeb9de-eb24-40aa-8b1c-fee90fa18d9b"
     }
   }
 }

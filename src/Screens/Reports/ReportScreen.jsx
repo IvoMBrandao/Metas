@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Button } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BarChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
-import Card from '../../Componentes/Card'; // Certifique-se de ajustar o caminho conforme necessário
+import Card from '../../componentes/Card'; 
 
 export const ReportScreen = ({ route, navigation }) => {
   const [meta, setMeta] = useState(null);
@@ -46,21 +46,27 @@ export const ReportScreen = ({ route, navigation }) => {
   const metaValue = parseFloat(meta.value);
   const metaDays = parseInt(meta.salesDays, 10) || 0;
   const daysRemaining = metaDays - daysSold;
+  const dailyExpected = metaValue / daysSold;
+  const daysPast = metaDays - daysRemaining;
 
   // Calcular a Diária Esperada
   const remainingValue = metaValue - soldValue;
   const dailyGoal = daysRemaining > 0 ? remainingValue / daysRemaining : 0;
 
   // Calcular o Valor de Venda Esperado
-  const dailySold = daysSold > 0 ? soldValue / daysSold : 0;
-  const projectedValue = daysSold > 0 ? (soldValue / daysSold) * metaDays : 0;
+
+  const projectedValue = (metaValue / metaDays) * daysPast;
 
   // Calcular percentuais
   const percentSold = (soldValue / metaValue) * 100;
-  const percentProjected = (projectedValue / metaValue) * 100;
-
-  // Prevenir valores negativos
+  const percentProjected = (((soldValue / daysPast)* metaDays)/metaValue)*100 ;
+  // Prevenir valores negativos//
   const remainingMeta = Math.max(0, ((metaValue - soldValue) / metaValue) * 100);
+
+  //Calcular valor que falta para vender
+
+  const missingSell = metaValue-soldValue;
+
 
   const chartData = {
     labels: ['Vendidos', 'Projeção'],
@@ -78,6 +84,7 @@ export const ReportScreen = ({ route, navigation }) => {
       <Card title='Informações da Meta'>
         <Text style={styles.subtitle}>Valor da Meta: R$ {metaValue.toFixed(2)}</Text>
         <Text style={styles.subtitle}>Valor Vendido no Mês: R$ {soldValue.toFixed(2)}</Text>
+        <Text style={styles.subtitle}>Falta vender: R$ {missingSell.toFixed(2)}</Text>
         <Text style={styles.subtitle}>Dias Restantes: {daysRemaining}</Text>
         <Text style={styles.subtitle}>Diária: R$ {dailyGoal.toFixed(2)}</Text>
         <Text style={styles.subtitle}>Valor de Venda Esperado: R$ {projectedValue.toFixed(2)}</Text>

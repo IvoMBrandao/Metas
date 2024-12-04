@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Button } from 'react-native';
+import { View, Text, StyleSheet, Button, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BarChart } from 'react-native-chart-kit';
-import { Dimensions } from 'react-native';
-import Card from '../../componentes/Card'; 
+import Card from '../../componentes/Card';
 
 export const ReportScreen = ({ route, navigation }) => {
   const [meta, setMeta] = useState(null);
@@ -13,15 +12,11 @@ export const ReportScreen = ({ route, navigation }) => {
     const fetchMetaData = async () => {
       try {
         const savedData = await AsyncStorage.getItem('financeData');
-
         if (savedData) {
           const data = JSON.parse(savedData);
           const metaData = data.find((item) => item.id === route.params?.metaId);
-
           if (metaData) {
             setMeta(metaData);
-
-            // Contar os dias distintos em que foram registradas vendas
             const uniqueDays = new Set(metaData.sales?.map((sale) => sale.date));
             setDaysSold(uniqueDays.size);
           }
@@ -37,36 +32,25 @@ export const ReportScreen = ({ route, navigation }) => {
   if (!meta) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>Você ainda não possui metas!</Text>
+        <Text style={styles.title}>Nenhuma meta selecionada.</Text>
+        <Button title="Voltar" onPress={() => navigation.goBack()} />
       </View>
     );
   }
 
-  const soldValue = parseFloat(meta.sales?.reduce((total, sale) => total + sale.value, 0) || 0);
+  const soldValue = parseFloat(meta.sales?.reduce((total, sale) => total + (sale.value || 0), 0) || 0);
   const metaValue = parseFloat(meta.value);
   const metaDays = parseInt(meta.salesDays, 10) || 0;
-  const daysRemaining = metaDays - daysSold;
-  const dailyExpected = metaValue / daysSold;
+  const daysRemaining = metaDays - daysSold > 0 ? metaDays - daysSold : 0;
+  const dailyGoal = daysRemaining > 0 ? (metaValue - soldValue) / daysRemaining : 0;
   const daysPast = metaDays - daysRemaining;
 
-  // Calcular a Diária Esperada
-  const remainingValue = metaValue - soldValue;
-  const dailyGoal = daysRemaining > 0 ? remainingValue / daysRemaining : 0;
-
-  // Calcular o Valor de Venda Esperado
-
+  // Valor de Venda Esperado
   const projectedValue = (metaValue / metaDays) * daysPast;
 
-  // Calcular percentuais
   const percentSold = (soldValue / metaValue) * 100;
-  const percentProjected = (((soldValue / daysPast)* metaDays)/metaValue)*100 ;
-  // Prevenir valores negativos//
-  const remainingMeta = Math.max(0, ((metaValue - soldValue) / metaValue) * 100);
-
-  //Calcular valor que falta para vender
-
-  const missingSell = metaValue-soldValue;
-
+  const percentProjected = (projectedValue / metaValue) * 100;
+  const missingSell = Math.max(0, metaValue - soldValue);
 
   const chartData = {
     labels: ['Vendidos', 'Projeção'],
@@ -80,10 +64,13 @@ export const ReportScreen = ({ route, navigation }) => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Resumo da Meta</Text>
-
-      <Card title='Informações da Meta'>
+      <Card title="Informações da Meta">
         <Text style={styles.subtitle}>Valor da Meta: R$ {metaValue.toFixed(2)}</Text>
-        <Text style={styles.subtitle}>Valor Vendido no Mês: R$ {soldValue.toFixed(2)}</Text>
+        <Text style={styles.subtitle}>
+          {soldValue > 0
+            ? `Valor Vendido no Mês: R$ ${soldValue.toFixed(2)}`
+            : 'Nenhuma venda registrada até o momento.'}
+        </Text>
         <Text style={styles.subtitle}>Falta vender: R$ {missingSell.toFixed(2)}</Text>
         <Text style={styles.subtitle}>Dias Restantes: {daysRemaining}</Text>
         <Text style={styles.subtitle}>Diária: R$ {dailyGoal.toFixed(2)}</Text>
@@ -96,7 +83,7 @@ export const ReportScreen = ({ route, navigation }) => {
         data={chartData}
         width={Dimensions.get('window').width - 40}
         height={250}
-        yAxisLabel='%'
+        yAxisLabel=""
         chartConfig={{
           backgroundColor: '#ffffff',
           backgroundGradientFrom: '#ffffff',

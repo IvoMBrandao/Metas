@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Button, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Adsbanner from '../../componentes/Adsbanner';
 
 const EditMetaScreen = ({ route, navigation }) => {
   const { item, index } = route.params;

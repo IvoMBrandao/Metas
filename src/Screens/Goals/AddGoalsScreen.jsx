@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Adsbanner from '../../componentes/Adsbanner';
 
 const AddMetaScreen = ({ navigation }) => {
   const [name, setName] = useState('');
@@ -60,6 +61,7 @@ const AddMetaScreen = ({ navigation }) => {
         keyboardType="numeric"
       />
       <Button title="Salvar" onPress={handleSave} />
+      <Adsbanner/>
     </View>
   );
 };

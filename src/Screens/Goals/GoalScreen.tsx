@@ -1,5 +1,5 @@
 // src/screens/MetaScreen.js
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback ,useRef} from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,10 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { Platform } from 'react-native';
+import Adsbanner from '../../componentes/Adsbanner';
+
+
 
 const MetaScreen = ({ navigation }) => {
   const [data, setData] = useState([]);
@@ -90,6 +94,8 @@ const MetaScreen = ({ navigation }) => {
     </TouchableOpacity>
   );
 
+
+  
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Metas</Text>
@@ -100,6 +106,7 @@ const MetaScreen = ({ navigation }) => {
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
       />
       <Button title='Adicionar' onPress={() => navigation.navigate('AddGoal')} />
+
     </View>
   );
 };

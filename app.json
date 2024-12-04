@@ -40,6 +40,15 @@
     "runtimeVersion": "1.0.0",
     "updates": {
       "url": "https://u.expo.dev/7ddeb9de-eb24-40aa-8b1c-fee90fa18d9b"
-    }
+    },
+    "plugins": [
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-8555818057366318~5711547205",
+          "iosAppId": "ca-app-pub-8555818057366318~5711547205"
+        }
+      ]
+    ]
   }
 }

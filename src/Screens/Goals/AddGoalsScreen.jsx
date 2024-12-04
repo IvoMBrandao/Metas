@@ -61,7 +61,6 @@ const AddMetaScreen = ({ navigation }) => {
         keyboardType="numeric"
       />
       <Button title="Salvar" onPress={handleSave} />
-      <Adsbanner/>
     </View>
   );
 };

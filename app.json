@@ -25,7 +25,8 @@
         "ACCESS_FINE_LOCATION",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-        "INTERNET"
+        "INTERNET",
+        "READ_EXTERNAL_STORAGE"
       ],
       "versionCode": 11
     },
@@ -45,9 +46,11 @@
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-8555818057366318~5711547205",
+         "androidAppId": "ca-app-pub-8555818057366318~5711547205",
           "iosAppId": "ca-app-pub-8555818057366318~5711547205"
+
         }
+     
       ]
     ]
   }

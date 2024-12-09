@@ -1,6 +1,14 @@
-// src/screens/EditMetaScreen.js
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const EditMetaScreen = ({ route, navigation }) => {
@@ -28,44 +36,81 @@ const EditMetaScreen = ({ route, navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Editar Meta</Text>
-      <TextInput style={styles.input} placeholder='Nome' value={name} onChangeText={setName} />
-      <TextInput
-        style={styles.input}
-        placeholder='Valor'
-        value={value}
-        keyboardType='numeric'
-        onChangeText={setValue}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder='Dias de Venda'
-        value={days}
-        keyboardType='numeric'
-        onChangeText={setDays}
-      />
-      <Button title='Salvar' onPress={saveChanges} />
-    </View>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <Text style={styles.title}>Editar Meta</Text>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Nome"
+          value={name}
+          onChangeText={setName}
+          placeholderTextColor="#BDBDBD"
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Valor"
+          value={value}
+          keyboardType="numeric"
+          onChangeText={setValue}
+          placeholderTextColor="#BDBDBD"
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Dias de Venda"
+          value={days}
+          keyboardType="numeric"
+          onChangeText={setDays}
+          placeholderTextColor="#BDBDBD"
+        />
+
+        <TouchableOpacity style={styles.button} onPress={saveChanges}>
+          <Text style={styles.buttonText}>Salvar</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F7F9FC',
+  },
+  scrollContainer: {
     padding: 20,
-    backgroundColor: '#FFFFFF',
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
+    fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 20,
+    color: '#2D3142',
   },
   input: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#7F8C8D',
-    marginBottom: 20,
-    padding: 5,
+    borderWidth: 1,
+    borderColor: '#BDBDBD',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 15,
+    backgroundColor: '#ffffff',
+    fontSize: 16,
+    color: '#2D3142',
+  },
+  button: {
+    backgroundColor: '#3A86FF',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
   },
 });
 

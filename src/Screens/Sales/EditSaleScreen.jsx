@@ -1,64 +1,256 @@
-// src/screens/EditSaleScreen.js
-import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  KeyboardAvoidingView,
+  ScrollView,
+  Platform,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const EditSaleScreen = ({ route, navigation }) => {
   const { sale, metaId } = route.params;
-  const [newValue, setNewValue] = useState(sale.value.toString());
+  const [selectedDate, setSelectedDate] = useState(sale.date);
+  const [saleValue, setSaleValue] = useState(sale.value.toString());
+  const [description, setDescription] = useState(sale.description);
+  const [paymentMethod, setPaymentMethod] = useState(sale.paymentMethod);
+  const [selectedCustomer, setSelectedCustomer] = useState(sale.customer || '');
+  const [installments, setInstallments] = useState(
+    sale.installments ? sale.installments.toString() : ''
+  );
+  const [installmentValue, setInstallmentValue] = useState('');
 
-  const handleSave = async () => {
+  useEffect(() => {
+    calculateInstallment();
+  }, [saleValue, installments]);
+
+  const calculateInstallment = () => {
+    if (saleValue && installments) {
+      const value = (parseFloat(saleValue) / parseInt(installments)).toFixed(2);
+      setInstallmentValue(value);
+    } else {
+      setInstallmentValue('');
+    }
+  };
+
+  const updateSale = async () => {
+    if (!saleValue || (paymentMethod === 'crediario' && (!selectedCustomer || !installments))) {
+      Alert.alert(
+        'Erro',
+        paymentMethod === 'crediario'
+          ? 'Por favor, selecione um cliente e insira o número de parcelas.'
+          : 'Por favor, insira o valor da venda.'
+      );
+      return;
+    }
+
     try {
       const savedData = await AsyncStorage.getItem('financeData');
-      if (savedData) {
-        const data = JSON.parse(savedData);
-        const metaData = data.find(item => item.id === metaId);
-        
-        const updatedSales = metaData.sales.map(s => 
-          s.id === sale.id ? { ...s, value: parseFloat(newValue) } : s
-        );
-        const updatedMeta = { ...metaData, sales: updatedSales };
-        const updatedData = data.map(item => item.id === metaId ? updatedMeta : item);
+      const parsedData = savedData ? JSON.parse(savedData) : [];
+      const metaIndex = parsedData.findIndex((item) => item.id === metaId);
 
-        await AsyncStorage.setItem('financeData', JSON.stringify(updatedData));
-        Alert.alert('Sucesso', 'Venda atualizada com sucesso!');
-        navigation.goBack();
+      if (metaIndex === -1) {
+        Alert.alert('Erro', 'Meta não encontrada.');
+        return;
       }
+
+      const updatedSales = parsedData[metaIndex].sales.map((s) =>
+        s.id === sale.id
+          ? {
+              ...s,
+              date: selectedDate,
+              value: parseFloat(saleValue),
+              description,
+              paymentMethod,
+              customer: paymentMethod === 'crediario' ? selectedCustomer : null,
+              installments: paymentMethod === 'crediario' ? parseInt(installments) : null,
+            }
+          : s
+      );
+
+      parsedData[metaIndex].sales = updatedSales;
+
+      await AsyncStorage.setItem('financeData', JSON.stringify(parsedData));
+      Alert.alert('Sucesso', 'Venda atualizada com sucesso!');
+      navigation.goBack();
     } catch (error) {
-      console.log('Erro ao salvar dados', error);
+      console.log('Erro ao atualizar venda', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao atualizar a venda.');
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Editar Venda</Text>
-      <TextInput
-        style={styles.input}
-        value={newValue}
-        onChangeText={setNewValue}
-        keyboardType="numeric"
-      />
-      <Button title="Salvar" onPress={handleSave} />
-    </View>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <Text style={styles.title}>Editar Venda</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Data"
+          value={selectedDate}
+          onChangeText={setSelectedDate}
+          placeholderTextColor="#BDBDBD"
+        />
+        <View style={styles.row}>
+          <TextInput
+            style={[styles.input, styles.inputLarge]}
+            placeholder="Valor da Venda"
+            value={saleValue}
+            keyboardType="numeric"
+            onChangeText={setSaleValue}
+            placeholderTextColor="#BDBDBD"
+          />
+          {paymentMethod === 'crediario' && (
+            <>
+              <Text style={styles.textInline}>x</Text>
+              <TextInput
+                style={[styles.input, styles.inputSmall]}
+                placeholder="Parcelas"
+                value={installments}
+                keyboardType="numeric"
+                onChangeText={setInstallments}
+                placeholderTextColor="#BDBDBD"
+              />
+              <Text style={styles.textInline}>
+                = {installments && installmentValue ? `${installments}x R$ ${installmentValue}` : ''}
+              </Text>
+            </>
+          )}
+        </View>
+        <TextInput
+          style={styles.input}
+          placeholder="Descrição"
+          value={description}
+          onChangeText={setDescription}
+          placeholderTextColor="#BDBDBD"
+        />
+        <Text style={styles.label}>Forma de Pagamento:</Text>
+        <View style={styles.optionsContainer}>
+          {['dinheiro', 'pix', 'crediario'].map((method) => (
+            <TouchableOpacity
+              key={method}
+              style={[
+                styles.optionButton,
+                paymentMethod === method && styles.selectedOption,
+              ]}
+              onPress={() => setPaymentMethod(method)}
+            >
+              <Text
+                style={[
+                  styles.optionText,
+                  paymentMethod === method && styles.selectedOptionText,
+                ]}
+              >
+                {method.charAt(0).toUpperCase() + method.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {paymentMethod === 'crediario' && (
+          <TextInput
+            style={styles.input}
+            placeholder="Cliente"
+            value={selectedCustomer}
+            onChangeText={setSelectedCustomer}
+            placeholderTextColor="#BDBDBD"
+          />
+        )}
+        <TouchableOpacity style={styles.button} onPress={updateSale}>
+          <Text style={styles.buttonText}>Atualizar Venda</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#F7F9FC',
+  },
+  scrollContainer: {
     padding: 20,
-    backgroundColor: '#FFFFFF',
   },
   title: {
-    fontSize: 24,
-    marginBottom: 10,
+    fontSize: 26,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 20,
+    color: '#2D3142',
   },
   input: {
-    height: 40,
-    borderColor: '#CCCCCC',
     borderWidth: 1,
-    marginBottom: 20,
-    paddingHorizontal: 10,
+    borderColor: '#BDBDBD',
+    borderRadius: 8,
+    padding: 10,
+    marginVertical: 10,
+    backgroundColor: '#ffffff',
+    fontSize: 16,
+    color: '#2D3142',
+  },
+  inputLarge: {
+    flex: 2,
+  },
+  inputSmall: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  textInline: {
+    marginHorizontal: 5,
+    fontSize: 16,
+    color: '#2D3142',
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 20,
+    color: '#2D3142',
+  },
+  optionsContainer: {
+    flexDirection: 'row',
+    marginVertical: 10,
+  },
+  optionButton: {
+    flex: 1,
+    padding: 10,
+    marginHorizontal: 5,
+    borderWidth: 1,
+    borderColor: '#BDBDBD',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  selectedOption: {
+    backgroundColor: '#3A86FF',
+    borderColor: '#3A86FF',
+  },
+  optionText: {
+    fontSize: 14,
+    color: '#2D3142',
+  },
+  selectedOptionText: {
+    color: '#ffffff',
+  },
+  button: {
+    backgroundColor: '#3A86FF',
+    padding: 15,
+    borderRadius: 8,
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '500',
   },
 });
 

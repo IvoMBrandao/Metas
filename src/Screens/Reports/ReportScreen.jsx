@@ -1,12 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Button, Dimensions } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+  FlatList,
+  TouchableOpacity,
+  ScrollView,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BarChart } from 'react-native-chart-kit';
 import Card from '../../componentes/Card';
 
 export const ReportScreen = ({ route, navigation }) => {
   const [meta, setMeta] = useState(null);
   const [daysSold, setDaysSold] = useState(0);
+  const [allGoals, setAllGoals] = useState([]);
+  const [selectedGoalId, setSelectedGoalId] = useState(route.params?.metaId || null);
+
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value);
+  };
 
   useEffect(() => {
     const fetchMetaData = async () => {
@@ -14,11 +30,15 @@ export const ReportScreen = ({ route, navigation }) => {
         const savedData = await AsyncStorage.getItem('financeData');
         if (savedData) {
           const data = JSON.parse(savedData);
-          const metaData = data.find((item) => item.id === route.params?.metaId);
-          if (metaData) {
-            setMeta(metaData);
-            const uniqueDays = new Set(metaData.sales?.map((sale) => sale.date));
-            setDaysSold(uniqueDays.size);
+          setAllGoals(data);
+
+          if (selectedGoalId) {
+            const metaData = data.find((item) => item.id === selectedGoalId);
+            if (metaData) {
+              setMeta(metaData);
+              const uniqueDays = new Set(metaData.sales?.map((sale) => sale.date));
+              setDaysSold(uniqueDays.size);
+            }
           }
         }
       } catch (error) {
@@ -27,94 +47,156 @@ export const ReportScreen = ({ route, navigation }) => {
     };
 
     fetchMetaData();
-  }, [route.params?.metaId]);
+  }, [selectedGoalId]);
+
+  const handleGoalSelect = (goalId) => {
+    setSelectedGoalId(goalId);
+  };
+
+  if (!meta && allGoals.length > 0) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          <Text style={styles.title}>Selecione uma Meta</Text>
+          <FlatList
+            data={allGoals}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.goalItem}
+                onPress={() => handleGoalSelect(item.id)}
+              >
+                <View>
+                  <Text style={styles.goalTitle}>{item.name}</Text>
+                  <Text style={styles.goalValue}>
+                    Valor da Meta: {formatCurrency(item.value)}
+                  </Text>
+                </View>
+                <Text style={styles.goalActionText}>Ver Detalhes →</Text>
+              </TouchableOpacity>
+            )}
+            contentContainerStyle={styles.listContainer}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!meta) {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>Nenhuma meta selecionada.</Text>
-        <Button title="Voltar" onPress={() => navigation.goBack()} />
+        <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
+          <Text style={styles.buttonText}>Voltar</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
-  const soldValue = parseFloat(meta.sales?.reduce((total, sale) => total + (sale.value || 0), 0) || 0);
-  const metaValue = parseFloat(meta.value);
+  const soldValue = meta.sales?.reduce((total, sale) => total + (sale.value || 0), 0) || 0;
+  const metaValue = meta.value;
   const metaDays = parseInt(meta.salesDays, 10) || 0;
   const daysRemaining = metaDays - daysSold > 0 ? metaDays - daysSold : 0;
   const dailyGoal = daysRemaining > 0 ? (metaValue - soldValue) / daysRemaining : 0;
   const daysPast = metaDays - daysRemaining;
-
-  // Valor de Venda Esperado
   const projectedValue = (metaValue / metaDays) * daysPast;
-
   const percentSold = (soldValue / metaValue) * 100;
-  const percentProjected = (projectedValue / metaValue) * 100;
   const missingSell = Math.max(0, metaValue - soldValue);
 
-  const chartData = {
-    labels: ['Vendidos', 'Projeção'],
-    datasets: [
-      {
-        data: [percentSold, percentProjected],
-      },
-    ],
+  const navigateToSalesReport = () => {
+    navigation.navigate('SalesReportScreen', {
+      metaId: selectedGoalId,
+      monthYear: '2024-12',
+    });
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Resumo da Meta</Text>
-      <Card title="Informações da Meta">
-        <Text style={styles.subtitle}>Valor da Meta: R$ {metaValue.toFixed(2)}</Text>
-        <Text style={styles.subtitle}>
-          {soldValue > 0
-            ? `Valor Vendido no Mês: R$ ${soldValue.toFixed(2)}`
-            : 'Nenhuma venda registrada até o momento.'}
-        </Text>
-        <Text style={styles.subtitle}>Falta vender: R$ {missingSell.toFixed(2)}</Text>
-        <Text style={styles.subtitle}>Dias Restantes: {daysRemaining}</Text>
-        <Text style={styles.subtitle}>Diária: R$ {dailyGoal.toFixed(2)}</Text>
-        <Text style={styles.subtitle}>Valor de Venda Esperado: R$ {projectedValue.toFixed(2)}</Text>
-        <Text style={styles.subtitle}>Percentual Vendido: {percentSold.toFixed(2)}%</Text>
-        <Text style={styles.subtitle}>Percentual Projetado: {percentProjected.toFixed(2)}%</Text>
-      </Card>
-
-      <BarChart
-        data={chartData}
-        width={Dimensions.get('window').width - 40}
-        height={250}
-        yAxisLabel=""
-        chartConfig={{
-          backgroundColor: '#ffffff',
-          backgroundGradientFrom: '#ffffff',
-          backgroundGradientTo: '#ffffff',
-          decimalPlaces: 2,
-          color: (opacity = 1) => `rgba(0, 0, 255, ${opacity})`,
-          labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-          barPercentage: 0.5,
-        }}
-        style={styles.chart}
-      />
-    </View>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.title}>Resumo da Meta</Text>
+        <Card title="Informações da Meta">
+          <Text style={styles.subtitle}>Valor da Meta: {formatCurrency(metaValue)}</Text>
+          <Text style={styles.subtitle}>
+            {soldValue > 0
+              ? `Valor Vendido no Mês: ${formatCurrency(soldValue)}`
+              : 'Nenhuma venda registrada até o momento.'}
+          </Text>
+          <Text style={styles.subtitle}>Falta vender: {formatCurrency(missingSell)}</Text>
+          <Text style={styles.subtitle}>Dias Restantes: {daysRemaining}</Text>
+          <Text style={styles.subtitle}>Diária: {formatCurrency(dailyGoal)}</Text>
+          <Text style={styles.subtitle}>
+            Valor de Venda Esperado: {formatCurrency(projectedValue)}
+          </Text>
+          <Text style={styles.subtitle}>Percentual Vendido: {percentSold.toFixed(2)}%</Text>
+        </Card>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
   container: {
     flex: 1,
     padding: 20,
     backgroundColor: '#FFFFFF',
   },
   title: {
-    fontSize: 24,
-    marginBottom: 10,
+    fontSize: 28,
+    marginBottom: 20,
+    textAlign: 'center',
+    fontWeight: 'bold',
+    color: '#2D3142',
   },
   subtitle: {
     fontSize: 18,
     marginBottom: 10,
+    color: '#2D3142',
   },
-  chart: {
-    marginVertical: 8,
-    borderRadius: 16,
+  button: {
+    marginTop: 20,
+    backgroundColor: '#3A86FF',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  goalItem: {
+    padding: 15,
+    backgroundColor: '#F7F9FC',
+    borderRadius: 10,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  goalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#2D3142',
+  },
+  goalValue: {
+    fontSize: 16,
+    color: '#27AE60',
+    marginTop: 5,
+  },
+  goalActionText: {
+    fontSize: 14,
+    color: '#3A86FF',
+    fontWeight: '500',
   },
 });
+
+export default ReportScreen;

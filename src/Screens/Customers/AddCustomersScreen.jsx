@@ -12,36 +12,36 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const AddMetaScreen = ({ navigation }) => {
+const AddCustomersScreen = ({ navigation }) => {
   const [name, setName] = useState('');
-  const [value, setValue] = useState('');
-  const [salesDays, setSalesDays] = useState('');
+  const [phone, setPhone] = useState('');
+  const [dob, setDob] = useState('');
 
-  const handleSave = async () => {
-    if (!name || !value) {
-      Alert.alert('Erro', 'Por favor, preencha todos os campos.');
+  const saveCustomer = async () => {
+    if (!name.trim()) {
+      Alert.alert('Erro', 'O campo Nome é obrigatório.');
       return;
     }
 
     try {
-      const savedData = await AsyncStorage.getItem('financeData');
-      const data = savedData ? JSON.parse(savedData) : [];
-
-      const newId = data.length > 0 ? data[data.length - 1].id + 1 : 1;
-
-      const newMeta = {
-        id: newId,
+      const newCustomer = {
+        id: Date.now().toString(),
         name,
-        value,
-        salesDays,
+        phone,
+        dob,
       };
 
-      data.push(newMeta);
-      await AsyncStorage.setItem('financeData', JSON.stringify(data));
+      const existingCustomers = await AsyncStorage.getItem('customersData');
+      const customers = existingCustomers ? JSON.parse(existingCustomers) : [];
+      customers.push(newCustomer);
 
-      navigation.goBack();
+      await AsyncStorage.setItem('customersData', JSON.stringify(customers));
+
+      Alert.alert('Sucesso', 'Cliente adicionado com sucesso.');
+      navigation.goBack(); // Retorna para a tela anterior
     } catch (error) {
-      console.log('Erro ao salvar dados', error);
+      console.error('Erro ao salvar cliente:', error);
+      Alert.alert('Erro', 'Não foi possível salvar o cliente.');
     }
   };
 
@@ -51,34 +51,36 @@ const AddMetaScreen = ({ navigation }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <Text style={styles.title}>Adicionar Meta</Text>
+        <Text style={styles.title}>Adicionar Cliente</Text>
 
         <TextInput
           style={styles.input}
-          placeholder="Nome"
+          placeholder="Nome (obrigatório)"
           value={name}
           onChangeText={setName}
           placeholderTextColor="#BDBDBD"
         />
+
         <TextInput
           style={styles.input}
-          placeholder="Valor"
-          value={value}
-          onChangeText={setValue}
-          keyboardType="numeric"
-          placeholderTextColor="#BDBDBD"
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Dias de Venda"
-          value={salesDays}
-          onChangeText={setSalesDays}
-          keyboardType="numeric"
+          placeholder="Telefone"
+          value={phone}
+          keyboardType="phone-pad"
+          onChangeText={setPhone}
           placeholderTextColor="#BDBDBD"
         />
 
-        <TouchableOpacity style={styles.button} onPress={handleSave}>
-          <Text style={styles.buttonText}>Salvar</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Data de Nascimento (DD/MM/AAAA)"
+          value={dob}
+          keyboardType="numeric"
+          onChangeText={setDob}
+          placeholderTextColor="#BDBDBD"
+        />
+
+        <TouchableOpacity style={styles.button} onPress={saveCustomer}>
+          <Text style={styles.buttonText}>Salvar Cliente</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -124,4 +126,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default AddMetaScreen;
+export default AddCustomersScreen;

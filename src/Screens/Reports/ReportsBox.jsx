@@ -78,11 +78,7 @@ const CashRegisterScreen = () => {
 
     const metaSales = selectedMeta.sales || [];
     const filtered = metaSales.filter((sale) => {
-      const saleDate = new Date(sale.date);
-      const saleDay = String(saleDate.getDate()).padStart(2, '0');
-      const saleMonth = String(saleDate.getMonth() + 1).padStart(2, '0');
-      const saleYear = String(saleDate.getFullYear());
-
+      const [saleYear, saleMonth, saleDay] = sale.date.split('-');
       return (
         (!day || saleDay === day) &&
         (!month || saleMonth === month) &&
@@ -132,10 +128,8 @@ const CashRegisterScreen = () => {
       reportText += `Total Cartão Parcelado: R$ ${totals.creditCardInstallment.toFixed(2)}\n\n`;
 
       filteredData.forEach((sale) => {
-        const saleDate = new Date(sale.date);
-        const formattedDate = `${String(saleDate.getDate()).padStart(2, '0')}/${String(
-          saleDate.getMonth() + 1
-        ).padStart(2, '0')}/${saleDate.getFullYear()}`;
+        const [y, m, d] = sale.date.split('-');
+        const formattedDate = `${d}/${m}/${y}`;
         reportText += `Data: ${formattedDate}\n`;
         reportText += `Descrição: ${sale.description || 'Não informado'}\n`;
         reportText += `Forma de Pagamento: ${sale.paymentMethod}\n`;
@@ -243,7 +237,7 @@ const CashRegisterScreen = () => {
         renderItem={({ item }) => (
           <View style={styles.saleItem}>
             <Text style={styles.saleText}>
-              Data: {new Date(item.date).toLocaleDateString('pt-BR')}
+              Data: {item.date.split('-').reverse().join('/')}
             </Text>
             <Text style={styles.saleText}>Descrição: {item.description}</Text>
             <Text style={styles.saleText}>Forma: {item.paymentMethod}</Text>
@@ -260,7 +254,6 @@ const CashRegisterScreen = () => {
     </View>
   );
 };
-
 
 const styles = StyleSheet.create({
   container: {
@@ -355,7 +348,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#2D3142',
-    marginBottom: 5,
+    marginBottom: 
+    5,
   },
   saleItem: {
     backgroundColor: '#FFFFFF',

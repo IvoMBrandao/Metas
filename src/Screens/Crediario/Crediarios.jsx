@@ -13,7 +13,6 @@ import Checkbox from 'expo-checkbox';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
 
-
 const CreditoScreen = ({ navigation }) => {
   const [crediarioSales, setCrediarioSales] = useState([]);
   const [filteredSales, setFilteredSales] = useState([]);
@@ -22,13 +21,11 @@ const CreditoScreen = ({ navigation }) => {
   const [isModalVisible, setModalVisible] = useState(false);
   const isFocused = useIsFocused(); // Detecta se a tela está em foco
 
-
   useEffect(() => {
     if (isFocused) {
       fetchCrediarioSales(); // Atualiza os dados sempre que a tela for focada
     }
   }, [isFocused]);
-
 
   useEffect(() => {
     fetchCrediarioSales();
@@ -46,9 +43,7 @@ const CreditoScreen = ({ navigation }) => {
         const allCrediarioSales = parsedData
           .flatMap((meta) =>
             meta.sales?.filter(
-              (sale) =>
-                sale.paymentMethod === 'crediario' &&
-                !sale.closed
+              (sale) => sale.paymentMethod === 'crediario' && !sale.closed
             ) || []
           )
           .sort((a, b) => {
@@ -126,16 +121,18 @@ const CreditoScreen = ({ navigation }) => {
 
           await AsyncStorage.setItem('financeData', JSON.stringify(parsedData));
           fetchCrediarioSales();
-          setSelectedSale((prev) => (prev
-            ? {
-                ...prev,
-                parcels: prev.parcels.map((p, index) =>
-                  index === parcelIndex
-                    ? { ...p, paid: parcel.paid, paymentDate: parcel.paymentDate }
-                    : p
-                ),
-              }
-            : null));
+          setSelectedSale((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  parcels: prev.parcels.map((p, index) =>
+                    index === parcelIndex
+                      ? { ...p, paid: parcel.paid, paymentDate: parcel.paymentDate }
+                      : p
+                  ),
+                }
+              : null
+          );
         }
       }
     } catch (error) {
@@ -172,6 +169,17 @@ const CreditoScreen = ({ navigation }) => {
     }
   };
 
+  const getNextParcelColor = (date) => {
+    if (!date) return '#27AE60'; // Todas pagas
+    const now = new Date();
+    const dueDate = new Date(date);
+    const diffDays = Math.ceil((dueDate - now) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return '#E74C3C'; // Vencido
+    if (diffDays <= 15) return '#F1C40F'; // A menos de 15 dias
+    return '#27AE60'; // Dentro do prazo
+  };
+
   const renderSaleItem = ({ item }) => {
     const nextParcel = item.parcels.find((parcel) => !parcel.paid);
     return (
@@ -185,7 +193,12 @@ const CreditoScreen = ({ navigation }) => {
         <Text style={styles.saleDescription}>{item.description}</Text>
         <Text style={styles.saleCustomer}>Cliente: {item.customer}</Text>
         {nextParcel && (
-          <Text style={styles.nextParcel}>
+          <Text
+            style={[
+              styles.nextParcel,
+              { color: getNextParcelColor(nextParcel.date) },
+            ]}
+          >
             Próxima Parcela: {formatDate(nextParcel.date)} - R$ {nextParcel.value}
           </Text>
         )}
@@ -196,7 +209,8 @@ const CreditoScreen = ({ navigation }) => {
   const renderGroupedItem = ({ item }) => (
     <View style={styles.groupedItem}>
       <Text style={styles.groupDate}>
-        Data de Vencimento: {item.date !== 'Todas pagas' ? formatDate(item.date) : 'Todas pagas'}
+        Data de Vencimento:{' '}
+        {item.date !== 'Todas pagas' ? formatDate(item.date) : 'Todas pagas'}
       </Text>
       <FlatList
         data={item.sales}
@@ -236,22 +250,29 @@ const CreditoScreen = ({ navigation }) => {
           {selectedSale && (
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Detalhes da Compra</Text>
-              <Text style={styles.modalText}>Descrição: {selectedSale.description}</Text>
-              <Text style={styles.modalText}>Cliente: {selectedSale.customer}</Text>
+              <Text style={styles.modalText}>
+                Descrição: {selectedSale.description}
+              </Text>
+              <Text style={styles.modalText}>
+                Cliente: {selectedSale.customer}
+              </Text>
               <FlatList
                 data={selectedSale.parcels}
                 keyExtractor={(item, index) => index.toString()}
                 renderItem={({ item, index }) => (
                   <View style={styles.parcelItem}>
                     <Text style={styles.parcelText}>
-                      Parcela {item.number}: R$ {item.value} - {formatDate(item.date)}
+                      Parcela {item.number}: R$ {item.value} -{' '}
+                      {formatDate(item.date)}
                       {item.paid && item.paymentDate
                         ? ` (Pago em: ${formatDate(item.paymentDate)})`
                         : ''}
                     </Text>
                     <Checkbox
                       value={item.paid}
-                      onValueChange={() => toggleParcelStatus(selectedSale.id, index)}
+                      onValueChange={() =>
+                        toggleParcelStatus(selectedSale.id, index)
+                      }
                       color={item.paid ? '#3A86FF' : undefined}
                     />
                   </View>
@@ -323,7 +344,6 @@ const styles = StyleSheet.create({
   },
   nextParcel: {
     fontSize: 14,
-    color: '#27AE60',
     marginTop: 5,
   },
   groupDate: {
@@ -371,9 +391,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   modalContent: {
-    width: '90%',
+    width: '98%',
     padding: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FFFFFF',   
     borderRadius: 8,
   },
   modalTitle: {

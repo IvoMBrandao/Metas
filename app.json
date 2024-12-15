@@ -4,7 +4,7 @@
     "slug": "Metas",
     "version": "1.0.10",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon.webp",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
@@ -46,7 +46,7 @@
       [
         "react-native-google-mobile-ads",
         {
-         "androidAppId": "ca-app-pub-8555818057366318~5711547205",
+      "androidAppId": "ca-app-pub-8555818057366318~5711547205",
           "iosAppId": "ca-app-pub-8555818057366318~5711547205"
 
         }

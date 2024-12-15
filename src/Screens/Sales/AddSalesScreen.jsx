@@ -55,9 +55,6 @@ const AddSaleScreen = ({ route, navigation }) => {
     });
     return unsubscribe;
   }, [navigation]);
-  
-
-
 
   useEffect(() => {
     loadCustomers();
@@ -103,6 +100,11 @@ const AddSaleScreen = ({ route, navigation }) => {
     }
 
     try {
+      // Ajusta a data para meio-dia na hora de salvar a venda, mantendo o formato YYYY-MM-DD
+      const saleDateObj = new Date(selectedDate + 'T00:00:00');
+      saleDateObj.setHours(12, 0, 0, 0);
+      const finalDate = saleDateObj.toISOString().split('T')[0]; // Extrai somente YYYY-MM-DD
+
       const savedData = await AsyncStorage.getItem('financeData');
       const parsedData = savedData ? JSON.parse(savedData) : [];
       const metaIndex = parsedData.findIndex((item) => item.id === metaId);
@@ -132,7 +134,7 @@ const AddSaleScreen = ({ route, navigation }) => {
 
       const newSale = {
         id: Date.now().toString(),
-        date: selectedDate,
+        date: finalDate, // Armazena apenas a data, como antes
         value: parseFloat(saleValue),
         description,
         paymentMethod: isDebit
@@ -146,6 +148,7 @@ const AddSaleScreen = ({ route, navigation }) => {
         installments: paymentMethod === 'crediario' ? parseInt(installments) : null,
         parcels: paymentMethod === 'crediario' ? parcels : [],
       };
+
       parsedData[metaIndex].sales = parsedData[metaIndex].sales || [];
       parsedData[metaIndex].sales.push(newSale);
 
@@ -238,12 +241,12 @@ const AddSaleScreen = ({ route, navigation }) => {
                 editable={!isDebit}
               />
               <Text style={styles.textInline}>
-                = {installments && installmentValue ? `${installments}x R$ ${installmentValue}` : ''}
+                {installments && installmentValue ? `${installments}x R$ ${installmentValue}` : ''}
               </Text>
             </>
           )}
         </View>
-      
+
         <TextInput
           style={styles.input}
           placeholder="Descrição"
@@ -251,7 +254,7 @@ const AddSaleScreen = ({ route, navigation }) => {
           onChangeText={setDescription}
           placeholderTextColor="#BDBDBD"
         />
-  <Text style={styles.label}>Cliente:</Text>
+        <Text style={styles.label}>Cliente:</Text>
         <TouchableOpacity
           style={[styles.input, styles.customerSelector]}
           onPress={() => setCustomerModalVisible(true)}
@@ -284,19 +287,18 @@ const AddSaleScreen = ({ route, navigation }) => {
           ))}
         </View>
         {paymentMethod === 'cartao' && (
-        <View style={styles.raw}>
-        <View style={styles.checkboxContainer}>
-          <Checkbox
-            value={isDebit}
-            onValueChange={(checked) => {
-              setIsDebit(checked);
-              if (checked) setInstallments('');
-            }}
-          />
-          <Text style={styles.label}>Débito</Text>
-        </View>
-      </View>
-      
+          <View style={styles.raw}>
+            <View style={styles.checkboxContainer}>
+              <Checkbox
+                value={isDebit}
+                onValueChange={(checked) => {
+                  setIsDebit(checked);
+                  if (checked) setInstallments('');
+                }}
+              />
+              <Text style={styles.label}>Débito</Text>
+            </View>
+          </View>
         )}
         <TouchableOpacity style={styles.button} onPress={addSale}>
           <Text style={styles.buttonText}>Adicionar Venda</Text>
@@ -309,44 +311,39 @@ const AddSaleScreen = ({ route, navigation }) => {
         </TouchableOpacity>
       </ScrollView>
 
-      
       <Modal visible={isCustomerModalVisible} animationType="slide">
-  <View style={styles.modalContainer}>
-    <TextInput
-      style={styles.searchInput}
-      placeholder="Buscar cliente"
-      value={searchTerm}
-      onChangeText={setSearchTerm}
-      placeholderTextColor="#BDBDBD"
-    />
-    <FlatList
-      data={filteredCustomers}
-      keyExtractor={(item, index) => index.toString()}
-      renderItem={renderCustomerItem}
-    />
-    <TouchableOpacity
-      style={styles.modalCloseButton}
-      onPress={() => setCustomerModalVisible(false)}
-    >
-      <Text style={styles.modalCloseButtonText}>Fechar</Text>
-    </TouchableOpacity>
+        <View style={styles.modalContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Buscar cliente"
+            value={searchTerm}
+            onChangeText={setSearchTerm}
+            placeholderTextColor="#BDBDBD"
+          />
+          <FlatList
+            data={filteredCustomers}
+            keyExtractor={(item, index) => index.toString()}
+            renderItem={renderCustomerItem}
+          />
+          <TouchableOpacity
+            style={styles.modalCloseButton}
+            onPress={() => setCustomerModalVisible(false)}
+          >
+            <Text style={styles.modalCloseButtonText}>Fechar</Text>
+          </TouchableOpacity>
 
-
-
-    {/* Botão flutuante para adicionar cliente */}
-    <TouchableOpacity
-  style={styles.floatingAddButton}
-  onPress={() => {
-    setCustomerModalVisible(false);
-    navigation.navigate('AddCustomers');
-  }}
->
-  <Text style={styles.floatingAddButtonText}>+</Text>
-</TouchableOpacity>
-  </View>
-</Modal>
-
-
+          {/* Botão flutuante para adicionar cliente */}
+          <TouchableOpacity
+            style={styles.floatingAddButton}
+            onPress={() => {
+              setCustomerModalVisible(false);
+              navigation.navigate('AddCustomers');
+            }}
+          >
+            <Text style={styles.floatingAddButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -397,6 +394,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 20,
     color: '#2D3142',
+    marginLeft: 10, 
   },
   optionsContainer: {
     flexDirection: 'row',
@@ -482,9 +480,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
   },
-  checkbox: {
-    marginLeft: 10,
-  },
   raw: {
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -495,32 +490,9 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     marginRight: 10, 
   },
-  label: {
-    fontSize: 16,
-    color: '#2D3142',
-    marginLeft: 10, 
-  },
-  modalButtonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
-  },
-  addCustomerButton: {
-    backgroundColor: '#3A86FF',
-    padding: 10,
-    borderRadius: 8,
-    flex: 1,
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  addCustomerButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '500',
-  },
   floatingAddButton: {
     position: 'absolute',
-    bottom: 80, // Posicionado acima do botão "Fechar"
+    bottom: 80,
     right: 20,
     backgroundColor: '#3A86FF',
     width: 60,
@@ -539,7 +511,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
   },
-  
 });
 
 export default AddSaleScreen;

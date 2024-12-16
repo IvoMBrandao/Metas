@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,69 @@ import {
   StyleSheet,
   Alert,
   RefreshControl,
+  Dimensions,
+  Modal,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Checkbox from 'expo-checkbox';
 import { useFocusEffect } from '@react-navigation/native';
 import SideMenu from '../../componentes/SideMenu ';
+const { width } = Dimensions.get('window');
 
 const MetaScreen = ({ navigation }) => {
   const [data, setData] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showBirthdayModal, setShowBirthdayModal] = useState(false);
+  const [birthdaysToday, setBirthdaysToday] = useState([]);
+  const [doNotRemindToday, setDoNotRemindToday] = useState(false);
+
+  useEffect(() => {
+    checkAndLoadBirthdayReminder();
+  }, []);
+
+  const checkAndLoadBirthdayReminder = async () => {
+    try {
+      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const skipReminder = await AsyncStorage.getItem('skipBirthdayReminder');
+
+      if (skipReminder !== today) {
+        await fetchBirthdaysToday();
+        setShowBirthdayModal(true);
+      }
+    } catch (error) {
+      console.error('Erro ao verificar lembrete de aniversários:', error);
+    }
+  };
+
+  const fetchBirthdaysToday = async () => {
+    try {
+      const savedCustomers = await AsyncStorage.getItem('customersData');
+      const customers = savedCustomers ? JSON.parse(savedCustomers) : [];
+      const today = new Date();
+      const todayFormatted = today.toISOString().slice(5, 10); // MM-DD
+
+      const birthdays = customers.filter((customer) => {
+        const customerDOB = customer.dob?.split('/').reverse().join('-'); // DD/MM/YYYY para YYYY-MM-DD
+        return customerDOB?.slice(5, 10) === todayFormatted;
+      });
+
+      setBirthdaysToday(birthdays);
+    } catch (error) {
+      console.error('Erro ao carregar aniversariantes:', error);
+    }
+  };
+
+  const saveSkipReminder = async () => {
+    try {
+      if (doNotRemindToday) {
+        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        await AsyncStorage.setItem('skipBirthdayReminder', today);
+      }
+      setShowBirthdayModal(false);
+    } catch (error) {
+      console.error('Erro ao salvar preferência de lembrete:', error);
+    }
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -23,7 +78,7 @@ const MetaScreen = ({ navigation }) => {
         setData(JSON.parse(savedData));
       }
     } catch (error) {
-      console.log('Erro ao carregar dados', error);
+      console.error('Erro ao carregar dados:', error);
     }
   }, []);
 
@@ -50,7 +105,7 @@ const MetaScreen = ({ navigation }) => {
             await AsyncStorage.setItem('financeData', JSON.stringify(updatedData));
             setData(updatedData);
           } catch (error) {
-            console.log('Erro ao excluir dados', error);
+            console.error('Erro ao excluir dados:', error);
           }
         },
       },
@@ -61,15 +116,11 @@ const MetaScreen = ({ navigation }) => {
     navigation.navigate('EditGoal', { item, index });
   };
 
-  const handlePress = (item) => {
-    navigation.navigate('AddSalesScreen', { metaId: item.id });
-  };
-
   const renderItem = ({ item, index }) => (
     <TouchableOpacity
       style={styles.listItem}
-      onPress={() => handlePress(item)}
       activeOpacity={0.8}
+      onPress={() => navigation.navigate('AddSalesScreen', { metaId: item.id })} // Corrigido para navegar
     >
       <View style={styles.listTextContainer}>
         <Text style={styles.listName}>{item.name}</Text>
@@ -91,11 +142,17 @@ const MetaScreen = ({ navigation }) => {
       </View>
     </TouchableOpacity>
   );
+  
 
   return (
     <SideMenu navigation={navigation}>
       <View style={styles.container}>
-        <Text style={styles.title}>Metas</Text>
+        <View style={styles.background}>
+          <View style={styles.halfMoon} />
+        </View>
+        <View style={styles.titleWrapper}>
+          <Text style={styles.title}>Metas</Text>
+        </View>
         <FlatList
           data={data}
           keyExtractor={(item) => (item.id ? item.id.toString() : '0')}
@@ -104,9 +161,6 @@ const MetaScreen = ({ navigation }) => {
             <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
           }
         />
-
-      
-
         <TouchableOpacity
           style={styles.addButton}
           onPress={() => navigation.navigate('AddGoal')}
@@ -114,6 +168,49 @@ const MetaScreen = ({ navigation }) => {
         >
           <Text style={styles.addButtonText}>Adicionar Meta</Text>
         </TouchableOpacity>
+
+        <Modal
+          visible={showBirthdayModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowBirthdayModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Aniversariantes do Dia</Text>
+              {birthdaysToday.length > 0 ? (
+                birthdaysToday.map((customer) => (
+                  <View key={customer.id} style={styles.birthdayItem}>
+                    <Text style={styles.birthdayName}>{customer.name}</Text>
+                    <Text style={styles.birthdayPhone}>
+                      {customer.phone || 'Sem telefone'}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.noBirthdays}>Nenhum aniversariante hoje!</Text>
+              )}
+
+              <View style={styles.checkboxContainer}>
+                <Checkbox
+                  value={doNotRemindToday}
+                  onValueChange={setDoNotRemindToday}
+                  color={doNotRemindToday ? '#27AE60' : undefined}
+                />
+                <Text style={styles.checkboxText}>Não lembrar mais hoje</Text>
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={saveSkipReminder}
+                >
+                  <Text style={styles.modalButtonText}>Fechar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </SideMenu>
   );
@@ -125,12 +222,37 @@ const styles = StyleSheet.create({
     padding: 20,
     backgroundColor: '#F7F9FC',
   },
+  background: {
+    position: 'absolute',
+    width: width * 1.5,
+    height: width * 0.75,
+    top: -width * 0.35,
+    left: -width * 0.25,
+    backgroundColor: '#3A86FF',
+    borderBottomLeftRadius: width * 0.75,
+    borderBottomRightRadius: width * 0.75,
+    zIndex: 0,
+  },
+  halfMoon: {
+    position: 'absolute',
+    width: width * 1.5,
+    height: width * 0.75,
+    backgroundColor: '#3A86FF',
+    borderBottomLeftRadius: width * 0.75,
+    borderBottomRightRadius: width * 0.75,
+    top: -width * 0.25,
+    left: -width * 0.25,
+  },
+  titleWrapper: {
+    alignItems: 'center',
+    marginBottom: 20,
+    zIndex: 1,
+  },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     textAlign: 'center',
-    marginBottom: 20,
-    color: '#2D3142',
+    color: '#FFF',
   },
   listItem: {
     flexDirection: 'row',
@@ -190,13 +312,68 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-  buttonC: {
-    backgroundColor: '#3a86ff',
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    borderRadius: 8,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
     alignItems: 'center',
+  },
+  modalContent: {
+    width: '80%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 20,
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#2D3142',
+    marginBottom: 15,
+  },
+  birthdayItem: {
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  birthdayName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#3A86FF',
+  },
+  birthdayPhone: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  noBirthdays: {
+    fontSize: 16,
+    color: '#BDBDBD',
     marginTop: 10,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  checkboxText: {
+    marginLeft: 10,
+    fontSize: 16,
+    color: '#2D3142',
+  },
+  modalActions: {
+    marginTop: 20,
+  },
+  modalButton: {
+    backgroundColor: '#27AE60',
+    padding: 10,
+    borderRadius: 5,
+    marginHorizontal: 5,
+    width: 150,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
 

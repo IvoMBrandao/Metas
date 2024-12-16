@@ -112,6 +112,14 @@ const SideMenu = ({ navigation, children }) => {
         </TouchableOpacity>
 
         <TouchableOpacity
+  style={styles.menuItem}
+  onPress={() => handleMenuNavigation('RankClientesScreen')}
+>
+  <Text style={styles.menuItemText}>Ranking de Clientes</Text>
+</TouchableOpacity>
+
+
+        <TouchableOpacity
           style={styles.menuItem}
           onPress={() => handleMenuNavigation('CashRegisterScreen',)}
         >

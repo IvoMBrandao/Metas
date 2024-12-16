@@ -15,6 +15,10 @@ import FinalizadasScreen from '../Screens/Crediario/FinalizadasScreen'
 import ReportScreens from'../Screens/Reports/Reports.jsx'
 import CashRegisterScreen from '../Screens/Reports/ReportsBox'
 import ComparativeReportScreen from '../Screens/Reports/ComparativeReportScreen '
+import RankClientesScreen from '../Screens/Customers/RankClientesScreen'
+import ClientDetailsScreen from '../Screens/Customers/ClientDetailsScreen'
+import EditCustomerScreen from "../Screens/Customers/EditCustomerScreen"
+
 
 const PublicStack = createStackNavigator();
 
@@ -32,11 +36,17 @@ export const PublicRoutes = () => {
       <PublicStack.Screen name='SalesReportScreen' component={SalesReportScreen}  options={{ headerShown:false }}/>
       <PublicStack.Screen name="Customers" component={CustomersScreen} options={{ headerShown: false}} />
       <PublicStack.Screen name="AddCustomers" component={AddCustomersScreen} options={{ headerShown: false }}/>
+      <PublicStack.Screen name="EditCustomer" component={EditCustomerScreen} options={{ headerShown: false }}/>
       <PublicStack.Screen name="CreditoScreen" component={CreditoScreen} options={{ headerShown: false }}/>
       <PublicStack.Screen name="Finalizadas" component={FinalizadasScreen} options={{ headerShown: false }}/>
       <PublicStack.Screen name="ReportScreen" component={ReportScreens} options={{ headerShown: false }} />
       <PublicStack.Screen name="CashRegisterScreen" component={CashRegisterScreen} options={{ headerShown: false }} />
       <PublicStack.Screen name="ComparativeReportScreen" component={ComparativeReportScreen} options={{ headerShown: false }} />
+      <PublicStack.Screen name="RankClientesScreen" component={RankClientesScreen} options={{ headerShown: false }} />
+      <PublicStack.Screen name="ClientDetailsScreen" component={ClientDetailsScreen} options={{ headerShown: false }} />
+
+      
+
     </PublicStack.Navigator>
   );
 };

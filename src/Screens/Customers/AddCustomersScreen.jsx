@@ -17,9 +17,54 @@ const AddCustomersScreen = ({ navigation }) => {
   const [phone, setPhone] = useState('');
   const [dob, setDob] = useState('');
 
+  const isLeapYear = (year) => {
+    return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  };
+
+  const getDaysInMonth = (month, year) => {
+    if (month === 2) {
+      return isLeapYear(year) ? 29 : 28;
+    }
+    return [4, 6, 9, 11].includes(month) ? 30 : 31;
+  };
+
+  const validateDob = (dob) => {
+    const parts = dob.split('/');
+    if (parts.length !== 3) return false;
+
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    const year = parseInt(parts[2], 10);
+
+    if (isNaN(day) || isNaN(month) || isNaN(year)) return false;
+    if (day < 1 || month < 1 || month > 12) return false;
+
+    const maxDays = getDaysInMonth(month, year);
+    if (day > maxDays) return false;
+
+    return true;
+  };
+
+  const formatDob = (text) => {
+    const cleaned = text.replace(/\D/g, ''); // Remove caracteres não numéricos
+    const length = cleaned.length;
+
+    if (length <= 2) return cleaned;
+    if (length <= 4) return `${cleaned.slice(0, 2)}/${cleaned.slice(2)}`;
+    return `${cleaned.slice(0, 2)}/${cleaned.slice(2, 4)}/${cleaned.slice(4, 8)}`;
+  };
+
   const saveCustomer = async () => {
     if (!name.trim()) {
       Alert.alert('Erro', 'O campo Nome é obrigatório.');
+      return;
+    }
+
+    if (dob && !validateDob(dob)) {
+      Alert.alert(
+        'Erro',
+        'A data de nascimento é inválida. Verifique o formato (DD/MM/AAAA) e os valores.'
+      );
       return;
     }
 
@@ -75,8 +120,9 @@ const AddCustomersScreen = ({ navigation }) => {
           placeholder="Data de Nascimento (DD/MM/AAAA)"
           value={dob}
           keyboardType="numeric"
-          onChangeText={setDob}
+          onChangeText={(text) => setDob(formatDob(text))}
           placeholderTextColor="#BDBDBD"
+          maxLength={10} // Limita o campo a 10 caracteres
         />
 
         <TouchableOpacity style={styles.button} onPress={saveCustomer}>

@@ -11,18 +11,20 @@ import {
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Checkbox from 'expo-checkbox';
 
 const EditSaleScreen = ({ route, navigation }) => {
   const { sale, metaId } = route.params;
   const [selectedDate, setSelectedDate] = useState(sale.date);
   const [saleValue, setSaleValue] = useState(sale.value.toString());
   const [description, setDescription] = useState(sale.description);
-  const [paymentMethod, setPaymentMethod] = useState(sale.paymentMethod);
+  const [paymentMethod, setPaymentMethod] = useState(sale.paymentMethod || 'dinheiro');
   const [selectedCustomer, setSelectedCustomer] = useState(sale.customer || '');
   const [installments, setInstallments] = useState(
     sale.installments ? sale.installments.toString() : ''
   );
   const [installmentValue, setInstallmentValue] = useState('');
+  const [isDebit, setIsDebit] = useState(paymentMethod === 'cartao-debito');
 
   useEffect(() => {
     calculateInstallment();
@@ -38,7 +40,11 @@ const EditSaleScreen = ({ route, navigation }) => {
   };
 
   const updateSale = async () => {
-    if (!saleValue || (paymentMethod === 'crediario' && (!selectedCustomer || !installments))) {
+    if (
+      !saleValue ||
+      (paymentMethod === 'crediario' && (!selectedCustomer || !installments)) ||
+      (paymentMethod === 'cartao' && !isDebit && !installments)
+    ) {
       Alert.alert(
         'Erro',
         paymentMethod === 'crediario'
@@ -58,6 +64,25 @@ const EditSaleScreen = ({ route, navigation }) => {
         return;
       }
 
+      // Nova lógica para crediário: Cálculo das parcelas
+      let parcels = [];
+      if (paymentMethod === 'crediario') {
+        const parcelValue = parseFloat(saleValue) / parseInt(installments);
+        const initialDate = new Date(selectedDate);
+        initialDate.setMonth(initialDate.getMonth() + 1);
+
+        for (let i = 0; i < parseInt(installments); i++) {
+          const parcelDate = new Date(initialDate);
+          parcelDate.setMonth(initialDate.getMonth() + i);
+          parcels.push({
+            number: i + 1,
+            value: parcelValue.toFixed(2),
+            date: parcelDate.toISOString().split('T')[0],
+            paid: false,
+          });
+        }
+      }
+
       const updatedSales = parsedData[metaIndex].sales.map((s) =>
         s.id === sale.id
           ? {
@@ -65,9 +90,16 @@ const EditSaleScreen = ({ route, navigation }) => {
               date: selectedDate,
               value: parseFloat(saleValue),
               description,
-              paymentMethod,
+              paymentMethod: isDebit
+                ? 'cartao-debito'
+                : paymentMethod === 'cartao' && installments === '1'
+                ? 'cartao-credito-a-vista'
+                : paymentMethod === 'cartao' && parseInt(installments) > 1
+                ? 'cartao-credito-parcelado'
+                : paymentMethod,
               customer: paymentMethod === 'crediario' ? selectedCustomer : null,
               installments: paymentMethod === 'crediario' ? parseInt(installments) : null,
+              parcels: paymentMethod === 'crediario' ? parcels : [], // Salva as parcelas no crediário
             }
           : s
       );
@@ -78,7 +110,7 @@ const EditSaleScreen = ({ route, navigation }) => {
       Alert.alert('Sucesso', 'Venda atualizada com sucesso!');
       navigation.goBack();
     } catch (error) {
-      console.log('Erro ao atualizar venda', error);
+      console.error('Erro ao atualizar venda', error);
       Alert.alert('Erro', 'Ocorreu um erro ao atualizar a venda.');
     }
   };
@@ -90,13 +122,7 @@ const EditSaleScreen = ({ route, navigation }) => {
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <Text style={styles.title}>Editar Venda</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Data"
-          value={selectedDate}
-          onChangeText={setSelectedDate}
-          placeholderTextColor="#BDBDBD"
-        />
+
         <View style={styles.row}>
           <TextInput
             style={[styles.input, styles.inputLarge]}
@@ -106,7 +132,7 @@ const EditSaleScreen = ({ route, navigation }) => {
             onChangeText={setSaleValue}
             placeholderTextColor="#BDBDBD"
           />
-          {paymentMethod === 'crediario' && (
+          {(paymentMethod === 'crediario' || (paymentMethod === 'cartao' && !isDebit)) && (
             <>
               <Text style={styles.textInline}>x</Text>
               <TextInput
@@ -116,13 +142,17 @@ const EditSaleScreen = ({ route, navigation }) => {
                 keyboardType="numeric"
                 onChangeText={setInstallments}
                 placeholderTextColor="#BDBDBD"
+                editable={!isDebit}
               />
               <Text style={styles.textInline}>
-                = {installments && installmentValue ? `${installments}x R$ ${installmentValue}` : ''}
+                {installments && installmentValue
+                  ? `${installments}x R$ ${installmentValue}`
+                  : ''}
               </Text>
             </>
           )}
         </View>
+
         <TextInput
           style={styles.input}
           placeholder="Descrição"
@@ -130,16 +160,28 @@ const EditSaleScreen = ({ route, navigation }) => {
           onChangeText={setDescription}
           placeholderTextColor="#BDBDBD"
         />
+
         <Text style={styles.label}>Forma de Pagamento:</Text>
         <View style={styles.optionsContainer}>
-          {['dinheiro', 'pix', 'crediario'].map((method) => (
+          {['dinheiro', 'pix', 'crediario', 'cartao'].map((method) => (
             <TouchableOpacity
               key={method}
               style={[
                 styles.optionButton,
                 paymentMethod === method && styles.selectedOption,
+                method === 'crediario' && !selectedCustomer && styles.disabledOption, // Desabilita crediário
               ]}
-              onPress={() => setPaymentMethod(method)}
+              onPress={() => {
+                if (method === 'crediario' && !selectedCustomer) {
+                  Alert.alert(
+                    'Erro',
+                    'É necessário selecionar um cliente antes de alterar para Crediário.'
+                  );
+                  return;
+                }
+                setPaymentMethod(method);
+              }}
+              disabled={method === 'crediario' && !selectedCustomer}
             >
               <Text
                 style={[
@@ -152,15 +194,20 @@ const EditSaleScreen = ({ route, navigation }) => {
             </TouchableOpacity>
           ))}
         </View>
-        {paymentMethod === 'crediario' && (
-          <TextInput
-            style={styles.input}
-            placeholder="Cliente"
-            value={selectedCustomer}
-            onChangeText={setSelectedCustomer}
-            placeholderTextColor="#BDBDBD"
-          />
+
+        {paymentMethod === 'cartao' && (
+          <View style={styles.checkboxContainer}>
+            <Checkbox
+              value={isDebit}
+              onValueChange={(checked) => {
+                setIsDebit(checked);
+                if (checked) setInstallments('');
+              }}
+            />
+            <Text style={styles.checkboxLabel}>Débito</Text>
+          </View>
         )}
+
         <TouchableOpacity style={styles.button} onPress={updateSale}>
           <Text style={styles.buttonText}>Atualizar Venda</Text>
         </TouchableOpacity>
@@ -240,6 +287,16 @@ const styles = StyleSheet.create({
   selectedOptionText: {
     color: '#ffffff',
   },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  checkboxLabel: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#2D3142',
+  },
   button: {
     backgroundColor: '#3A86FF',
     padding: 15,
@@ -252,6 +309,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
+  disabledOption: {
+     backgroundColor: '#E0E0E0' 
+    },
+
 });
 
 export default EditSaleScreen;

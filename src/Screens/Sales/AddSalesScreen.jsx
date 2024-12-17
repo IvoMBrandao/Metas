@@ -289,14 +289,16 @@ const AddSaleScreen = ({ route, navigation }) => {
         {paymentMethod === 'cartao' && (
           <View style={styles.raw}>
             <View style={styles.checkboxContainer}>
-              <Checkbox
-                value={isDebit}
-                onValueChange={(checked) => {
-                  setIsDebit(checked);
-                  if (checked) setInstallments('');
-                }}
-              />
-              <Text style={styles.label}>Débito</Text>
+            <View style={styles.checkboxWrapper}>
+    <Checkbox
+    value={isDebit}
+    onValueChange={(checked) => {
+      setIsDebit(checked);
+      if (checked) setInstallments('');
+    }}
+  />
+  <Text style={styles.checkboxLabel}>Débito</Text>
+</View>
             </View>
           </View>
         )}
@@ -511,6 +513,17 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
   },
+  checkboxWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center', 
+    marginLeft: 5,
+  }, 
+  checkboxLabel: {
+    marginLeft: 8, 
+    fontSize: 16,
+    color: '#2D3142',
+  },
+  
 });
 
 export default AddSaleScreen;

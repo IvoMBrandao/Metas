@@ -119,6 +119,23 @@ const SideMenu = ({ navigation, children }) => {
 </TouchableOpacity>
 
 
+
+<TouchableOpacity
+  style={styles.menuItem}
+  onPress={() => handleMenuNavigation('CrediarioResumo')}
+>
+  <Text style={styles.menuItemText}>Resumo do Crediario</Text>
+</TouchableOpacity>
+
+
+<TouchableOpacity
+  style={styles.menuItem}
+  onPress={() => handleMenuNavigation('Estoque')}
+>
+  <Text style={styles.menuItemText}>Estoque</Text>
+</TouchableOpacity>
+
+
         <TouchableOpacity
           style={styles.menuItem}
           onPress={() => handleMenuNavigation('CashRegisterScreen',)}

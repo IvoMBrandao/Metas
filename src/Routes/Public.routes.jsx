@@ -18,6 +18,16 @@ import ComparativeReportScreen from '../Screens/Reports/ComparativeReportScreen 
 import RankClientesScreen from '../Screens/Customers/RankClientesScreen'
 import ClientDetailsScreen from '../Screens/Customers/ClientDetailsScreen'
 import EditCustomerScreen from "../Screens/Customers/EditCustomerScreen"
+import CrediarioDetalhesScreen from '../Screens/Crediario/CrediarioDetalhesScreen ';
+import CrediarioResumoScreen from '../Screens/Crediario/CrediarioResumoScreen';
+import CadastroProdutoScreen from '../Screens/Estoque/CadastroProdutoScreen'
+import EstoqueScreen from '../Screens/Estoque/EstoqueScreen';
+import EditarProdutoScreen from '../Screens/Estoque/EditarProdutoScreen';
+import GerenciarCategoriasScreen from '../Screens/Estoque/GerenciarCategoriasScreen';
+import EditarCategoriaScreen from '../Screens/Estoque/EditarCategoriaScreen ';
+import ProdutoDetalhesScreen from '../Screens/Estoque/ProdutoDetalhesScreen';
+import EntradaScreen from '../Screens/Estoque/EntradaScreen';
+import SaidaManualScreen from '../Screens/Estoque/SaidaManualScreen';
 
 
 const PublicStack = createStackNavigator();
@@ -44,8 +54,17 @@ export const PublicRoutes = () => {
       <PublicStack.Screen name="ComparativeReportScreen" component={ComparativeReportScreen} options={{ headerShown: false }} />
       <PublicStack.Screen name="RankClientesScreen" component={RankClientesScreen} options={{ headerShown: false }} />
       <PublicStack.Screen name="ClientDetailsScreen" component={ClientDetailsScreen} options={{ headerShown: false }} />
-
-      
+      <PublicStack.Screen name="CrediarioResumo" component={CrediarioResumoScreen} options={{ headerShown: false }} />
+      <PublicStack.Screen name="CrediarioDetalhes" component={CrediarioDetalhesScreen}  options={{ headerShown: false }}/>
+      <PublicStack.Screen name="CadastroProduto" component={CadastroProdutoScreen} options={{ headerShown: false }}/>
+      <PublicStack.Screen name="Estoque" component={EstoqueScreen}  options={{ headerShown: false }}/>
+      <PublicStack.Screen name="EditarProduto" component={EditarProdutoScreen}  options={{ headerShown: false }}/>
+      <PublicStack.Screen name="GerenciarCategoriasScreen" component={GerenciarCategoriasScreen}  options={{ headerShown: false }}/>
+      <PublicStack.Screen name="EditarCategoriaScreen" component={EditarCategoriaScreen }  options={{ headerShown: false }}/>
+      <PublicStack.Screen name="ProdutoDetalhesScreen" component={ProdutoDetalhesScreen }  options={{ headerShown: false }}/>
+      <PublicStack.Screen name="EntradaScreen" component={EntradaScreen }  options={{ headerShown: false }}/>
+      <PublicStack.Screen name="SaidaManualScreen" component={SaidaManualScreen }  options={{ headerShown: false }}/>
+    
 
     </PublicStack.Navigator>
   );

@@ -116,6 +116,16 @@ const MetaScreen = ({ navigation }) => {
     navigation.navigate('EditGoal', { item, index });
   };
 
+  /**
+   * Função para formatar o número para o padrão de moeda brasileira
+   */
+  const formatToReal = (number) => {
+    return Number(number).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
+  };
+
   const renderItem = ({ item, index }) => (
     <TouchableOpacity
       style={styles.listItem}
@@ -124,7 +134,7 @@ const MetaScreen = ({ navigation }) => {
     >
       <View style={styles.listTextContainer}>
         <Text style={styles.listName}>{item.name}</Text>
-        <Text style={styles.listValue}>R$ {parseFloat(item.value).toFixed(2)}</Text>
+        <Text style={styles.listValue}>{formatToReal(item.value)}</Text>
       </View>
       <View style={styles.buttonContainer}>
         <TouchableOpacity
@@ -142,7 +152,6 @@ const MetaScreen = ({ navigation }) => {
       </View>
     </TouchableOpacity>
   );
-  
 
   return (
     <SideMenu navigation={navigation}>
@@ -153,12 +162,18 @@ const MetaScreen = ({ navigation }) => {
         <View style={styles.titleWrapper}>
           <Text style={styles.title}>Metas</Text>
         </View>
+
         <FlatList
           data={data}
           keyExtractor={(item) => (item.id ? item.id.toString() : '0')}
           renderItem={renderItem}
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>Nenhuma meta adicionada ainda.</Text>
+            </View>
           }
         />
         <TouchableOpacity
@@ -169,6 +184,7 @@ const MetaScreen = ({ navigation }) => {
           <Text style={styles.addButtonText}>Adicionar Meta</Text>
         </TouchableOpacity>
 
+        {/* Modal de Aniversariantes */}
         <Modal
           visible={showBirthdayModal}
           transparent
@@ -254,6 +270,28 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#FFF',
   },
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    backgroundColor: '#3A86FF',
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  headerTextName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  headerTextValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'right',
+    flex: 1,
+  },
   listItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -288,6 +326,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 5,
+    marginLeft: 5,
   },
   editButton: {
     backgroundColor: '#3498DB',
@@ -311,6 +350,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '600',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    marginTop: 50,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#BDBDBD',
   },
   modalOverlay: {
     flex: 1,

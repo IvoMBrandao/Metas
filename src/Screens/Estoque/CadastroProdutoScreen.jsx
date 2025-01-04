@@ -1,6 +1,6 @@
 // CadastroProdutoScreen.jsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   ScrollView,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import database from '@react-native-firebase/database';
 
 const CadastroProdutoScreen = ({ navigation }) => {
   const [nome, setNome] = useState('');
@@ -37,13 +38,28 @@ const CadastroProdutoScreen = ({ navigation }) => {
   }, []);
 
   /**
-   * Carrega as categorias do AsyncStorage
+   * Carrega as categorias do Realtime Database (RN Firebase)
    */
   const loadCategorias = async () => {
     try {
-      const savedCategorias = await AsyncStorage.getItem('categoriasData');
-      const parsedCategorias = savedCategorias ? JSON.parse(savedCategorias) : [];
-      setCategorias(parsedCategorias);
+      // Faz uma leitura única (similar a get() do SDK web)
+      const snapshot = await database()
+        .ref('/lojas/' + idDaLoja) // caminho do seu nó
+        .once('value');
+
+      if (snapshot.exists()) {
+        // snapshot.val() contém o objeto/array armazenado
+        const data = snapshot.val();
+
+        // Se for um objeto que precise ser convertido em array
+        // Ex.: { "id1": {...}, "id2": {...} }
+        const parsedCategorias = Object.values(data);
+
+        setCategorias(parsedCategorias);
+      } else {
+        // Se não existir dados
+        setCategorias([]);
+      }
     } catch (error) {
       console.error('Erro ao carregar categorias:', error);
     }
@@ -175,7 +191,10 @@ const CadastroProdutoScreen = ({ navigation }) => {
       // Verificar se o código já existe
       const existe = parsedData.find((prod) => prod.codigo === codigo);
       if (existe) {
-        Alert.alert('Erro', 'Já existe um produto com este código. Por favor, insira um código único.');
+        Alert.alert(
+          'Erro',
+          'Já existe um produto com este código. Por favor, insira um código único.'
+        );
         return;
       }
 
@@ -252,7 +271,7 @@ const CadastroProdutoScreen = ({ navigation }) => {
         {/* Nome do Produto */}
         <TextInput
           style={styles.input}
-          placeholder="Nome do Produto"
+          placeholder='Nome do Produto'
           value={nome}
           onChangeText={setNome}
         />
@@ -260,7 +279,7 @@ const CadastroProdutoScreen = ({ navigation }) => {
         {/* Código */}
         <TextInput
           style={styles.input}
-          placeholder="Código"
+          placeholder='Código'
           value={codigo}
           onChangeText={setCodigo}
         />
@@ -268,26 +287,22 @@ const CadastroProdutoScreen = ({ navigation }) => {
         {/* Quantidade */}
         <TextInput
           style={styles.input}
-          placeholder="Quantidade"
+          placeholder='Quantidade'
           value={quantidade}
           onChangeText={setQuantidade}
-          keyboardType="numeric"
+          keyboardType='numeric'
         />
 
         {/* Selecionar Categoria */}
         <View style={styles.row}>
           <TouchableOpacity
             style={[styles.dropdown, styles.fullWidthDropdown]}
-            onPress={() => setIsCategoriaDropdownVisible(!isCategoriaDropdownVisible)}
-          >
-            <Text style={styles.dropdownText}>
-              {categoria || 'Selecionar Categoria'}
-            </Text>
+            onPress={() => setIsCategoriaDropdownVisible(!isCategoriaDropdownVisible)}>
+            <Text style={styles.dropdownText}>{categoria || 'Selecionar Categoria'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.addButton}
-            onPress={() => navigation.navigate('GerenciarCategoriasScreen')}
-          >
+            onPress={() => navigation.navigate('GerenciarCategoriasScreen')}>
             <Text style={styles.addButtonText}>+</Text>
           </TouchableOpacity>
         </View>
@@ -300,8 +315,7 @@ const CadastroProdutoScreen = ({ navigation }) => {
                 style={styles.dropdownItem}
                 onPress={() => {
                   handleCategoriaSelect(cat);
-                }}
-              >
+                }}>
                 <Text style={styles.dropdownItemText}>{cat.nome}</Text>
               </TouchableOpacity>
             ))}
@@ -313,11 +327,8 @@ const CadastroProdutoScreen = ({ navigation }) => {
           <View style={styles.dropdownContainer}>
             <TouchableOpacity
               style={styles.dropdown}
-              onPress={() => setIsSubCategoriaDropdownVisible(!isSubCategoriaDropdownVisible)}
-            >
-              <Text style={styles.dropdownText}>
-                {subCategoria || 'Selecionar Subcategoria'}
-              </Text>
+              onPress={() => setIsSubCategoriaDropdownVisible(!isSubCategoriaDropdownVisible)}>
+              <Text style={styles.dropdownText}>{subCategoria || 'Selecionar Subcategoria'}</Text>
             </TouchableOpacity>
             {isSubCategoriaDropdownVisible && (
               <View>
@@ -325,8 +336,7 @@ const CadastroProdutoScreen = ({ navigation }) => {
                   <TouchableOpacity
                     key={index}
                     style={styles.dropdownItem}
-                    onPress={() => handleSubCategoriaSelect(sub)}
-                  >
+                    onPress={() => handleSubCategoriaSelect(sub)}>
                     <Text style={styles.dropdownItemText}>{sub}</Text>
                   </TouchableOpacity>
                 ))}
@@ -338,7 +348,7 @@ const CadastroProdutoScreen = ({ navigation }) => {
         {/* Fornecedor (Novo Campo) */}
         <TextInput
           style={styles.input}
-          placeholder="Fornecedor"
+          placeholder='Fornecedor'
           value={fornecedor}
           onChangeText={setFornecedor}
         />
@@ -346,16 +356,16 @@ const CadastroProdutoScreen = ({ navigation }) => {
         {/* Data de Entrada */}
         <TextInput
           style={styles.input}
-          placeholder="Data de Entrada (DD/MM/AAAA)"
+          placeholder='Data de Entrada (DD/MM/AAAA)'
           value={dataEntrada}
-          keyboardType="numeric"
+          keyboardType='numeric'
           onChangeText={handleDataChange}
         />
 
         {/* Unidade de Medida */}
         <TextInput
           style={styles.input}
-          placeholder="Unidade de Medida (ex: kg, un)"
+          placeholder='Unidade de Medida (ex: kg, un)'
           value={unidade}
           onChangeText={setUnidade}
         />
@@ -363,12 +373,12 @@ const CadastroProdutoScreen = ({ navigation }) => {
         {/* Valor de Compra */}
         <TextInput
           style={styles.input}
-          placeholder="Valor de Compra"
+          placeholder='Valor de Compra'
           value={valorCompra}
           onChangeText={(text) => {
             setValorCompra(text.replace(',', '.'));
           }}
-          keyboardType="numeric"
+          keyboardType='numeric'
           // Quando o usuário sair do campo Valor de Compra
           onEndEditing={handleValorCompraEndEditing}
         />
@@ -377,24 +387,24 @@ const CadastroProdutoScreen = ({ navigation }) => {
           {/* Porcentagem */}
           <TextInput
             style={[styles.input, styles.inputHalf]}
-            placeholder="% Margem de Lucro"
+            placeholder='% Margem de Lucro'
             value={porcentagem}
             onChangeText={(text) => {
               setPorcentagem(text.replace(',', '.'));
             }}
-            keyboardType="numeric"
+            keyboardType='numeric'
             onEndEditing={calculateFromCompraAndPorcentagem}
           />
 
           {/* Valor de Venda */}
           <TextInput
             style={[styles.input, styles.inputHalf]}
-            placeholder="Valor de Venda"
+            placeholder='Valor de Venda'
             value={valorVenda}
             onChangeText={(text) => {
               setValorVenda(text.replace(',', '.'));
             }}
-            keyboardType="numeric"
+            keyboardType='numeric'
             onEndEditing={calculateFromCompraAndVenda}
           />
         </View>
@@ -402,7 +412,7 @@ const CadastroProdutoScreen = ({ navigation }) => {
         {/* Lucro (somente leitura) */}
         <TextInput
           style={[styles.input, { backgroundColor: '#F0F0F0' }]}
-          placeholder="Lucro"
+          placeholder='Lucro'
           value={lucro}
           editable={false}
         />

@@ -3,6 +3,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Routes from './src/Routes/Root.routes';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
+import { AuthProvider } from './src/contexts/auth';
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -35,7 +36,9 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <Routes />
+      <AuthProvider>
+        <Routes />
+      </AuthProvider>
     </GestureHandlerRootView>
   );
 }

@@ -1,3 +1,5 @@
+// EntradaScreen.jsx
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -74,9 +76,15 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
   const handleSelectProduto = (produto) => {
     setProdutoSelecionado(produto);
     setQuantidadeEntrada('');
-    setValorCompra(produto.valorCompra ? produto.valorCompra.toString() : '');
-    setPorcentagem(produto.porcentagem ? produto.porcentagem.toString() : '');
-    setValorVenda(produto.valorVenda ? produto.valorVenda.toString() : '');
+    // Obter a última entrada para pré-carregar os valores
+    const ultimaEntrada = produto.entradas && produto.entradas.length > 0 
+      ? produto.entradas[produto.entradas.length - 1]
+      : null;
+
+    // Corrigido: Valor de Compra deve ser obtido de valorCompra
+    setValorCompra(ultimaEntrada ? ultimaEntrada.valorCompra.toString() : '');
+    setPorcentagem(ultimaEntrada ? ultimaEntrada.porcentagem.toString() : '');
+    setValorVenda(ultimaEntrada ? ultimaEntrada.valorVenda.toString() : '');
     setIsModalVisible(true);
   };
 
@@ -167,16 +175,38 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
       return;
     }
 
-    const novaQtd = Number(produtoSelecionado.quantidade) + Number(quantidadeEntrada);
-    const dataAtual = new Date().toISOString().split('T')[0];
+    const quantidade = parseInt(quantidadeEntrada, 10);
+    const compra = parseFloat(valorCompra);
+    const pct = parseFloat(porcentagem);
+    const venda = parseFloat(valorVenda);
+    const lucroCalculado = venda - compra;
+    const dataAtual = new Date().toISOString(); // Inclui data e hora
+
+    // Criação da nova entrada
+    const novaEntrada = {
+      id: Date.now().toString(),
+      data: dataAtual,
+      quantidade: quantidade,
+      valorCompra: compra,
+      porcentagem: pct,
+      valorVenda: venda,
+      lucro: lucroCalculado,
+      valorAnterior: produtoSelecionado.entradas && produtoSelecionado.entradas.length > 0 
+        ? produtoSelecionado.entradas[produtoSelecionado.entradas.length - 1].valorVenda 
+        : 0
+    };
+
+    // Atualiza o array de entradas
+    const novasEntradas = produtoSelecionado.entradas ? [...produtoSelecionado.entradas, novaEntrada] : [novaEntrada];
+
+    // Atualiza a quantidade total do produto
+    const novaQuantidade = produtoSelecionado.quantidade + quantidade;
 
     const novoProduto = {
       ...produtoSelecionado,
-      quantidade: novaQtd,
-      valorCompra: parseFloat(valorCompra),
-      porcentagem: parseFloat(porcentagem),
-      valorVenda: parseFloat(valorVenda),
-      dataEntrada: dataAtual
+      quantidade: novaQuantidade,
+      entradas: novasEntradas,
+      dataEntrada: dataAtual // Opcional: Atualizar data de entrada se necessário
     };
 
     // Atualiza no array principal
@@ -185,15 +215,24 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
       produtos[index] = novoProduto;
     }
 
-    await AsyncStorage.setItem('estoqueData', JSON.stringify(produtos));
-    setProdutos([...produtos]);
-    setFilteredProdutos([...produtos]);
+    try {
+      await AsyncStorage.setItem('estoqueData', JSON.stringify(produtos));
+      setProdutos([...produtos]);
+      setFilteredProdutos([...produtos]);
 
-    // Salva histórico de entrada
-    await salvarHistoricoEntrada(novoProduto, quantidadeEntrada);
+      // Salva histórico de entrada (opcional, conforme sua necessidade)
+      await salvarHistoricoEntrada(novoProduto, quantidadeEntrada);
 
-    Alert.alert('Sucesso', 'Entrada salva com sucesso!');
-    setIsModalVisible(false);
+      Alert.alert('Sucesso', 'Entrada salva com sucesso!', [
+        {
+          text: 'Ok',
+          onPress: () => setIsModalVisible(false),
+        },
+      ]);
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível salvar a entrada.');
+      console.error('Erro ao salvar entrada:', error);
+    }
   };
 
   /**
@@ -211,7 +250,7 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
         valorCompra: parseFloat(valorCompra),
         porcentagem: parseFloat(porcentagem),
         valorVenda: parseFloat(valorVenda),
-        data: new Date().toISOString(),
+        data: new Date().toISOString(), // Salva data e hora
       };
       movs.push(novaMov);
 

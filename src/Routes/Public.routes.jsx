@@ -28,6 +28,7 @@ import EditarCategoriaScreen from '../Screens/Estoque/EditarCategoriaScreen ';
 import ProdutoDetalhesScreen from '../Screens/Estoque/ProdutoDetalhesScreen';
 import EntradaScreen from '../Screens/Estoque/EntradaScreen';
 import SaidaManualScreen from '../Screens/Estoque/SaidaManualScreen';
+import RelatorioEstoqueScreen from '../Screens/Estoque/RelatorioEstoques';
 
 
 const PublicStack = createStackNavigator();
@@ -64,7 +65,8 @@ export const PublicRoutes = () => {
       <PublicStack.Screen name="ProdutoDetalhesScreen" component={ProdutoDetalhesScreen }  options={{ headerShown: false }}/>
       <PublicStack.Screen name="EntradaScreen" component={EntradaScreen }  options={{ headerShown: false }}/>
       <PublicStack.Screen name="SaidaManualScreen" component={SaidaManualScreen }  options={{ headerShown: false }}/>
-    
+      <PublicStack.Screen name="RelatorioEstoqueScreen" component={RelatorioEstoqueScreen }  options={{ headerShown: false }}/>
+      
 
     </PublicStack.Navigator>
   );

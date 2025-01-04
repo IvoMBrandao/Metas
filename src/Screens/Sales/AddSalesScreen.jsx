@@ -1,3 +1,5 @@
+// AddSaleScreen.jsx
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -167,7 +169,15 @@ const AddSaleScreen = ({ route, navigation }) => {
 
   // Função para adicionar o produto após confirmação
   const proceedToAddProduct = (quantityNum) => {
-    const precoUnit = parseFloat(productSelectedTemp.valorVenda || '0');
+    // Obtém a última entrada para pegar o valorVenda atual
+    const ultimaEntrada = productSelectedTemp.entradas && productSelectedTemp.entradas.length > 0
+      ? productSelectedTemp.entradas[productSelectedTemp.entradas.length - 1]
+      : null;
+
+    const precoUnit = ultimaEntrada && ultimaEntrada.valorVenda
+      ? parseFloat(ultimaEntrada.valorVenda)
+      : 0;
+
     const subtotal = precoUnit * quantityNum;
 
     const newItem = {
@@ -354,17 +364,29 @@ const AddSaleScreen = ({ route, navigation }) => {
   );
 
   // Função para renderizar cada item de produto na FlatList
-  const renderProductItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.productListItem}
-      onPress={() => handleSelectProduct(item)}
-    >
-      <Text style={styles.productName2}>
-        {item.nome} ({item.codigo})
-      </Text>
-      <Text style={styles.productPrice2}>R$ {item.valorVenda}</Text>
-    </TouchableOpacity>
-  );
+  const renderProductItem = ({ item }) => {
+    // Verifica se existem entradas e obtém a última entrada
+    const ultimaEntrada = item.entradas && item.entradas.length > 0
+      ? item.entradas[item.entradas.length - 1]
+      : null;
+
+    // Obtém o valorVenda da última entrada ou define como '0.00' se não existir
+    const valorVenda = ultimaEntrada && ultimaEntrada.valorVenda
+      ? ultimaEntrada.valorVenda.toFixed(2)
+      : '0.00';
+
+    return (
+      <TouchableOpacity
+        style={styles.productListItem}
+        onPress={() => handleSelectProduct(item)}
+      >
+        <Text style={styles.productName2}>
+          {item.nome} ({item.codigo})
+        </Text>
+        <Text style={styles.productPrice2}>R$ {valorVenda}</Text>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <KeyboardAvoidingView
@@ -482,7 +504,11 @@ const AddSaleScreen = ({ route, navigation }) => {
             editable={false}
             value={`R$ ${saleValue.toFixed(2)}`}
           />
-          {(paymentMethod === 'cartao' || paymentMethod === 'crediario') && (
+          {/* 
+            Atualização: Adiciona condição para desabilitar parcelas quando isDebit é verdadeiro 
+            Apenas para 'cartao', 'crediario' continua permitindo parcelas
+          */}
+          {(paymentMethod === 'cartao' && !isDebit) || paymentMethod === 'crediario' ? (
             <View style={styles.installmentsContainer}>
               <Text style={styles.installmentsLabel}>x</Text>
               <TextInput
@@ -492,6 +518,9 @@ const AddSaleScreen = ({ route, navigation }) => {
                 keyboardType="numeric"
                 onChangeText={setInstallments}
                 placeholderTextColor="#BDBDBD"
+                editable={!isDebit} // Desabilita quando isDebit é verdadeiro
+                // Opicional: Ajusta a opacidade para indicar desabilitado
+                // style={[styles.installmentsInput, isDebit && { backgroundColor: '#E0E0E0' }]}
               />
               {installments && installmentValue ? (
                 <Text style={styles.installmentInfo}>
@@ -499,7 +528,7 @@ const AddSaleScreen = ({ route, navigation }) => {
                 </Text>
               ) : null}
             </View>
-          )}
+          ) : null}
         </View>
 
         {/* Campo para descrição da venda */}
@@ -532,7 +561,13 @@ const AddSaleScreen = ({ route, navigation }) => {
                 styles.optionButton,
                 paymentMethod === method && styles.selectedOption,
               ]}
-              onPress={() => setPaymentMethod(method)}
+              onPress={() => {
+                setPaymentMethod(method);
+                // Se a forma de pagamento mudar para algo que não seja 'cartao', desmarca 'isDebit'
+                if (method !== 'cartao') {
+                  setIsDebit(false);
+                }
+              }}
             >
               <Text
                 style={[
@@ -546,7 +581,10 @@ const AddSaleScreen = ({ route, navigation }) => {
           ))}
         </View>
 
-        {/* Checkbox para débito se a forma de pagamento for cartão */}
+        {/* 
+          Atualização: Checkbox para débito só aparece quando a forma de pagamento é 'cartao'
+          e controla a desativação de parcelas
+        */}
         {paymentMethod === 'cartao' && (
           <View style={styles.raw}>
             <View style={styles.checkboxContainer}>
@@ -555,7 +593,7 @@ const AddSaleScreen = ({ route, navigation }) => {
                   value={isDebit}
                   onValueChange={(checked) => {
                     setIsDebit(checked);
-                    if (checked) setInstallments('');
+                    if (checked) setInstallments(''); // Reseta parcelas quando Débito é marcado
                   }}
                 />
                 <Text style={styles.checkboxLabel}>Débito</Text>

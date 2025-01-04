@@ -1,4 +1,5 @@
 // CadastroProdutoScreen.jsx
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -178,7 +179,7 @@ const CadastroProdutoScreen = ({ navigation }) => {
         return;
       }
 
-      // Converte data "DD/MM/AAAA" em "AAAA-MM-DD" (opcional)
+      // Converte data "DD/MM/AAAA" em ISO "AAAA-MM-DDTHH:MM:SSZ"
       let dataFormatada = dataEntrada;
       const [dia, mes, ano] = dataEntrada.split('/');
       if (dia && mes && ano) {
@@ -187,8 +188,20 @@ const CadastroProdutoScreen = ({ navigation }) => {
           Alert.alert('Erro', 'Data de entrada inválida.');
           return;
         }
-        dataFormatada = dataObj.toISOString().split('T')[0];
+        dataFormatada = dataObj.toISOString();
       }
+
+      // Criação da entrada inicial
+      const entradaInicial = {
+        id: Date.now().toString(),
+        data: dataFormatada,
+        quantidade: parseInt(quantidade),
+        valorCompra: parseFloat(valorCompra),
+        porcentagem: parseFloat(porcentagem),
+        valorVenda: parseFloat(valorVenda),
+        lucro: parseFloat(lucro),
+        valorAnterior: 0, // Nenhum valor anterior na entrada inicial
+      };
 
       const newProduct = {
         id: Date.now().toString(),
@@ -199,11 +212,8 @@ const CadastroProdutoScreen = ({ navigation }) => {
         subCategoria,
         dataEntrada: dataFormatada,
         unidade,
-        valorCompra: parseFloat(valorCompra).toFixed(2),
-        porcentagem: parseFloat(porcentagem).toFixed(2),
-        valorVenda: parseFloat(valorVenda).toFixed(2),
-        lucro: parseFloat(lucro).toFixed(2),
         fornecedor, // Adiciona o novo campo
+        entradas: [entradaInicial], // Array de entradas com a entrada inicial
       };
 
       const updatedData = [...parsedData, newProduct];
@@ -325,8 +335,8 @@ const CadastroProdutoScreen = ({ navigation }) => {
           </View>
         )}
 
-           {/* Fornecedor (Novo Campo) */}
-           <TextInput
+        {/* Fornecedor (Novo Campo) */}
+        <TextInput
           style={styles.input}
           placeholder="Fornecedor"
           value={fornecedor}
@@ -391,13 +401,11 @@ const CadastroProdutoScreen = ({ navigation }) => {
 
         {/* Lucro (somente leitura) */}
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: '#F0F0F0' }]}
           placeholder="Lucro"
           value={lucro}
           editable={false}
         />
-
-     
 
         {/* Botão Salvar */}
         <TouchableOpacity style={styles.button} onPress={saveProduct}>
@@ -407,6 +415,16 @@ const CadastroProdutoScreen = ({ navigation }) => {
     </ScrollView>
   );
 };
+
+/**
+ * Componente para exibir label + value em linha
+ */
+const DetailItem = ({ label, value }) => (
+  <View style={styles.detailLine}>
+    <Text style={styles.detailLabel}>{label}</Text>
+    <Text style={styles.detailValue}>{value}</Text>
+  </View>
+);
 
 export default CadastroProdutoScreen;
 

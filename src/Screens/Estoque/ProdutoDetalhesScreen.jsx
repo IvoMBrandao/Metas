@@ -1,65 +1,106 @@
+// ProdutoDetalhesScreen.jsx
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Alert,
-  ScrollView
+  FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const ProdutoDetalhesScreen = ({ route, navigation }) => {
   const { productId } = route.params;
   const [produto, setProduto] = useState(null);
+  const [entradas, setEntradas] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchProduto();
+    fetchProdutoDetalhes();
   }, []);
 
   /**
-   * Carrega o produto específico do AsyncStorage
+   * Carrega o produto específico e suas entradas do AsyncStorage
    */
-  const fetchProduto = async () => {
+  const fetchProdutoDetalhes = async () => {
     try {
+      // Carrega produtos do estoque
       const savedData = await AsyncStorage.getItem('estoqueData');
       const produtos = savedData ? JSON.parse(savedData) : [];
 
       const item = produtos.find((p) => p.id === productId);
       if (item) {
         setProduto(item);
+        // Obtém as entradas diretamente do produto
+        const entradasDoProduto = item.entradas ? item.entradas : [];
+        // Ordena as entradas por data (mais recentes primeiro)
+        entradasDoProduto.sort((a, b) => new Date(b.data) - new Date(a.data));
+        setEntradas(entradasDoProduto);
       } else {
         Alert.alert('Erro', 'Produto não encontrado.');
         navigation.goBack();
+        return;
       }
+
+      setLoading(false);
     } catch (error) {
-      console.error('Erro ao buscar produto:', error);
+      console.error('Erro ao buscar detalhes do produto:', error);
       Alert.alert('Erro', 'Não foi possível carregar os detalhes do produto.');
       navigation.goBack();
     }
   };
 
   /**
-   * Formata a data "AAAA-MM-DD" -> "DD/MM/AAAA"
+   * Formata uma string de data ISO para "DD/MM/YYYY"
+   * @param {string} dataISO - Data no formato ISO (e.g., "2023-10-21T15:30:45.000Z")
+   * @returns {string} - Data formatada (e.g., "21/10/2023")
    */
-  const formatDateDMY = (dataISO) => {
-    if (!dataISO || !dataISO.includes('-')) return dataISO || '';
-    const [ano, mes, dia] = dataISO.split('-');
+  const formatDate = (dataISO) => {
+    if (!dataISO) return '';
+
+    const date = new Date(dataISO);
+
+    const dia = String(date.getDate()).padStart(2, '0');
+    const mes = String(date.getMonth() + 1).padStart(2, '0'); // Janeiro é 0
+    const ano = date.getFullYear();
+
     return `${dia}/${mes}/${ano}`;
   };
 
-  if (!produto) {
+  /**
+   * Renderiza cada entrada na lista de histórico
+   */
+  const renderEntrada = ({ item }) => (
+    <View style={styles.entradaItem}>
+      <Text style={styles.entradaTipo}>Entrada</Text>
+      <Text style={styles.entradaDetalhes}>
+        Quantidade: {item.quantidade} {produto.unidade}
+      </Text>
+      <Text style={styles.entradaDetalhes}>
+        Valor de Compra: R$ {typeof item.valorCompra === 'number' ? item.valorCompra.toFixed(2) : '0.00'}
+      </Text>
+      <Text style={styles.entradaDetalhes}>
+        Porcentagem de Lucro: {typeof item.porcentagem === 'number' ? item.porcentagem.toFixed(2) : '0.00'}%
+      </Text>
+      <Text style={styles.entradaDetalhes}>
+        Valor de Venda: R$ {typeof item.valorVenda === 'number' ? item.valorVenda.toFixed(2) : '0.00'}
+      </Text>
+      <Text style={styles.entradaData}>
+        Data: {formatDate(item.data)}
+      </Text>
+    </View>
+  );
+
+  /**
+   * Renderiza o cabeçalho da lista com os detalhes do produto
+   */
+  const renderHeader = () => {
+    // Obter a última entrada para exibir detalhes atualizados
+    const latestEntrada = entradas.length > 0 ? entradas[0] : null;
+
     return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Carregando detalhes...</Text>
-      </View>
-    );
-  }
-
-  return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.title}>Detalhes do Produto</Text>
-
-      {/* Card com as informações */}
       <View style={styles.card}>
         <DetailItem label="Nome:" value={produto.nome} />
         <DetailItem label="Código:" value={produto.codigo} />
@@ -70,22 +111,72 @@ const ProdutoDetalhesScreen = ({ route, navigation }) => {
         <DetailItem label="Categoria:" value={produto.categoria} />
 
         {produto.subCategoria ? (
-          <DetailItem label="Subcat:" value={produto.subCategoria} />
+          <DetailItem label="Subcategoria:" value={produto.subCategoria} />
         ) : null}
 
         <DetailItem
           label="Data de Entrada:"
-          value={formatDateDMY(produto.dataEntrada)}
+          value={latestEntrada ? formatDate(latestEntrada.data) : 'N/A'}
         />
-        <DetailItem label="Valor de Compra:" value={`R$ ${produto.valorCompra}`} />
-        <DetailItem label="Valor de Venda:" value={`R$ ${produto.valorVenda}`} />
-        <DetailItem label="Lucro:" value={`R$ ${produto.lucro}`} />
+        <DetailItem
+          label="Valor de Compra:"
+          value={`R$ ${
+            latestEntrada && typeof latestEntrada.valorCompra === 'number'
+              ? latestEntrada.valorCompra.toFixed(2)
+              : '0.00'
+          }`}
+        />
+        <DetailItem
+          label="Valor de Venda:"
+          value={`R$ ${
+            latestEntrada && typeof latestEntrada.valorVenda === 'number'
+              ? latestEntrada.valorVenda.toFixed(2)
+              : '0.00'
+          }`}
+        />
+        <DetailItem
+          label="Lucro:"
+          value={`R$ ${
+            latestEntrada && typeof latestEntrada.lucro === 'number'
+              ? latestEntrada.lucro.toFixed(2)
+              : '0.00'
+          }`}
+        />
         <DetailItem
           label="Margem de Lucro:"
-          value={`${produto.porcentagem}%`}
+          value={`${
+            latestEntrada && typeof latestEntrada.porcentagem === 'number'
+              ? latestEntrada.porcentagem.toFixed(2)
+              : '0.00'
+          }%`}
         />
+        <Text style={styles.entradasTitle}>Histórico de Entradas</Text>
       </View>
-    </ScrollView>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#3A86FF" />
+        <Text style={styles.loadingText}>Carregando detalhes do produto...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <FlatList
+      data={entradas}
+      keyExtractor={(item) => item.id}
+      renderItem={renderEntrada}
+      ListHeaderComponent={renderHeader}
+      contentContainerStyle={styles.flatListContent}
+      ListEmptyComponent={
+        <Text style={styles.semEntradas}>
+          Nenhuma entrada registrada para este produto.
+        </Text>
+      }
+    />
   );
 };
 
@@ -102,11 +193,11 @@ const DetailItem = ({ label, value }) => (
 export default ProdutoDetalhesScreen;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F0F3F9',
+  flatListContent: {
     paddingHorizontal: 20,
     paddingTop: 20,
+    paddingBottom: 20,
+    backgroundColor: '#F0F3F9',
   },
   loadingContainer: {
     flex: 1,
@@ -117,12 +208,7 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     color: '#555',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1F2D3D',
-    marginBottom: 20,
+    marginTop: 10,
   },
   card: {
     backgroundColor: '#FFF',
@@ -135,6 +221,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.07,
     shadowRadius: 3,
     elevation: 2,
+    marginBottom: 15,
   },
   detailLine: {
     flexDirection: 'row',
@@ -151,5 +238,45 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#555',
   },
-
+  entradasTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1F2D3D',
+    marginTop: 20,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  entradaItem: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 10,
+    // Sombra leve
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  entradaTipo: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#3A86FF',
+    marginBottom: 5,
+  },
+  entradaDetalhes: {
+    fontSize: 14,
+    color: '#2D3142',
+  },
+  entradaData: {
+    fontSize: 14,
+    color: '#2D3142',
+    marginTop: 5,
+  },
+  semEntradas: {
+    fontSize: 16,
+    color: '#777777',
+    textAlign: 'center',
+    marginTop: 20,
+  },
 });

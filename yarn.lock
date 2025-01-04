@@ -3391,6 +3391,13 @@ expo-sharing@~12.0.1:
   resolved "https://registry.npmjs.org/expo-sharing/-/expo-sharing-12.0.1.tgz"
   integrity sha512-wBT+WeXwapj/9NWuLJO01vi9bdlchYu/Q/xD8slL/Ls4vVYku8CPqzkTtDFcjLrjtlJqyeHsdQXwKLvORmBIew==
 
+expo-splash-screen@~0.27.7:
+  version "0.27.7"
+  resolved "https://registry.yarnpkg.com/expo-splash-screen/-/expo-splash-screen-0.27.7.tgz#52171be54d8c008880d928e802819d767fbd3c12"
+  integrity sha512-s+eGcG185878nixlrjhhLD6UDYrvoqBUaBkIEozBVWFg3pkdsKpONPiUAco4XR3h7I/9ODq4quN28RJLFO+s0Q==
+  dependencies:
+    "@expo/prebuild-config" "7.0.9"
+
 expo-status-bar@^1.12.1:
   version "1.12.1"
   resolved "https://registry.npmjs.org/expo-status-bar/-/expo-status-bar-1.12.1.tgz"

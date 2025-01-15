@@ -1,15 +1,26 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, Alert, StyleSheet } from 'react-native';
-import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import { auth } from '../../../firebaseConfig'; // Certifique-se de que está correto
+import {
+  View,
+  Text,
+  TextInput,
+  Button,
+  StyleSheet,
+  Keyboard,
+  TouchableWithoutFeedback,
+} from 'react-native';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { auth } from '../../../firebaseConfig';
 
 export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
 
   const handleRegister = async () => {
+    Keyboard.dismiss(); // Esconde o teclado
+
     if (!email || !password || !confirmPassword) {
       setError('Todos os campos são obrigatórios.');
       return;
@@ -22,16 +33,18 @@ export default function RegisterScreen({ navigation }) {
 
     try {
       setError(null);
-      await createUserWithEmailAndPassword(auth, email, password);
+      setSuccessMessage(null);
 
-      // Faz logout para evitar navegação automática
-      await signOut(auth);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
 
-      Alert.alert('Sucesso', 'Conta criada com sucesso! Faça login.', [
-        { text: 'OK', onPress: () => navigation.navigate('Login') },
-      ]);
+      await sendEmailVerification(user);
+
+      setSuccessMessage('Conta criada com sucesso! Verifique seu e-mail antes de fazer login.');
+      setTimeout(() => {
+        navigation.navigate('Login');
+      }, 3000); // Redireciona após 3 segundos
     } catch (error) {
-      console.log('Erro completo:', error); // Para depuração
       let errorMessage = 'Erro ao criar conta.';
 
       if (error.code) {
@@ -45,17 +58,9 @@ export default function RegisterScreen({ navigation }) {
           case 'auth/weak-password':
             errorMessage = 'A senha deve ter pelo menos 6 caracteres.';
             break;
-          case 'auth/operation-not-allowed':
-            errorMessage = 'Cadastro desativado para este projeto.';
-            break;
-          case 'auth/network-request-failed':
-            errorMessage = 'Falha de conexão. Verifique sua internet.';
-            break;
           default:
-            errorMessage = `Erro desconhecido (${error.code}). Tente novamente.`;
+            errorMessage = error.message || 'Erro desconhecido.';
         }
-      } else {
-        errorMessage = 'Erro desconhecido sem código. Verifique sua configuração.';
       }
 
       setError(errorMessage);
@@ -63,39 +68,42 @@ export default function RegisterScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Criar Conta</Text>
-      {error && <Text style={styles.errorText}>{error}</Text>}
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Senha"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Confirmar Senha"
-        value={confirmPassword}
-        onChangeText={setConfirmPassword}
-        secureTextEntry
-      />
-      <Button title="Registrar" onPress={handleRegister} />
-      <Text style={styles.redirectText}>
-        Já possui uma conta?{' '}
-        <Text style={styles.link} onPress={() => navigation.navigate('Login')}>
-          Fazer login
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container}>
+        <Text style={styles.title}>Criar Conta</Text>
+        {error && <Text style={styles.errorText}>{error}</Text>}
+        {successMessage && <Text style={styles.successText}>{successMessage}</Text>}
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Senha"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Confirmar Senha"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry
+        />
+        <Button title="Registrar" onPress={handleRegister} />
+        <Text style={styles.redirectText}>
+          Já possui uma conta?{' '}
+          <Text style={styles.link} onPress={() => navigation.navigate('Login')}>
+            Fazer login
+          </Text>
         </Text>
-      </Text>
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -120,6 +128,11 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: 'red',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  successText: {
+    color: 'green',
     marginBottom: 10,
     textAlign: 'center',
   },

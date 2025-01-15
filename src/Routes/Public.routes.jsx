@@ -2,9 +2,10 @@ import React, { useContext } from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { AuthContext } from '../contexts/auth';
 import LoginScreen from '../Screens/Login/LoginScreen';
-import { ReportScreen } from '../Screens/Reports/ReportScreen';
-import AddGoalScreen from '../Screens/Goals/AddGoalsScreen';
+import RegisterScreen from '../Screens/Login/RegisterScreen';
 import GoalScreen from '../Screens/Goals/GoalScreen';
+import AddGoalScreen from '../Screens/Goals/AddGoalsScreen';
+import { ReportScreen } from '../Screens/Reports/ReportScreen';
 import EditGoal from '../Screens/Goals/EditGoal';
 import AddSalesScreen from '../Screens/Sales/AddSalesScreen';
 import SalesDetailScreen from '../Screens/Sales/SalesDetailScreen';
@@ -32,17 +33,22 @@ import ProdutoDetalhesScreen from '../Screens/Estoque/ProdutoDetalhesScreen';
 import EntradaScreen from '../Screens/Estoque/EntradaScreen';
 import SaidaManualScreen from '../Screens/Estoque/SaidaManualScreen';
 import RelatorioEstoqueScreen from '../Screens/Estoque/RelatorioEstoques';
-import RegisterScreen from '../Screens/Login/RegisterScreen';
-
+import LoadingScreen from '../Screens/LoadingScreen/LoadingScreen'; // Tela de carregamento
 
 const Stack = createStackNavigator();
 
 export const PublicRoutes = () => {
-  const { user } = useContext(AuthContext);
+  const { user, loading } = useContext(AuthContext);
+
+  // Exibir tela de carregamento enquanto o estado de autenticação é verificado
+  if (loading) {
+    return <LoadingScreen />;
+  }
 
   return (
-    <Stack.Navigator initialRouteName={user ? 'Goal' : 'Login'} screenOptions={{ headerShown: false }}>
-      {user ? (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      {user && user.emailVerified ? (
+        // Se o usuário estiver autenticado e com e-mail verificado
         <>
           <Stack.Screen name="Goal" component={GoalScreen} />
           <Stack.Screen name="Report" component={ReportScreen} />
@@ -74,9 +80,9 @@ export const PublicRoutes = () => {
           <Stack.Screen name="EntradaScreen" component={EntradaScreen} />
           <Stack.Screen name="SaidaManualScreen" component={SaidaManualScreen} />
           <Stack.Screen name="RelatorioEstoqueScreen" component={RelatorioEstoqueScreen} />
-          
         </>
       ) : (
+        // Caso contrário, mostrar as telas públicas (Login e Registro)
         <>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />

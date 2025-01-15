@@ -4,8 +4,11 @@ import Routes from './src/Routes/Root.routes';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
 import { AuthProvider } from './src/contexts/auth';
+import { initializeApp } from './firebaseConfig';
 
-// Keep the splash screen visible while we fetch resources
+
+
+// Manter a tela de splash visível enquanto recursos são carregados
 SplashScreen.preventAutoHideAsync();
 
 export default function App() {
@@ -13,14 +16,14 @@ export default function App() {
 
   const checkUpdates = async () => {
     try {
-      const { isAvailable } = await Updates.checkForUpdateAsync(); // Check for updates and return information about the update
+      const { isAvailable } = await Updates.checkForUpdateAsync(); // Verificar se há atualizações disponíveis
 
       if (isAvailable) {
-        await Updates.fetchUpdateAsync(); // Fetch the update and cache it until the app is restarted
-        await Updates.reloadAsync(); // Reload the app to apply the update
+        await Updates.fetchUpdateAsync(); // Baixar a atualização
+        await Updates.reloadAsync(); // Recarregar o app para aplicar a atualização
       }
     } catch (error) {
-      console.error('Failed to check for updates', error);
+      console.error('Erro ao verificar atualizações:', error);
     } finally {
       setIsReady(true);
     }
@@ -29,7 +32,9 @@ export default function App() {
   useEffect(() => {
     if (!__DEV__) {
       checkUpdates();
-    } else setIsReady(true);
+    } else {
+      setIsReady(true);
+    }
   }, []);
 
   if (!isReady) return null;

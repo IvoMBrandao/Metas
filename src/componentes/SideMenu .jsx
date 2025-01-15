@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import {
   View,
   Text,
@@ -8,17 +8,16 @@ import {
   Dimensions,
   TouchableWithoutFeedback,
 } from 'react-native';
-
 import Icon from 'react-native-vector-icons/Ionicons';
-
-
+import { AuthContext } from '../contexts/auth'; // Importa o contexto de autenticação
 
 const { width } = Dimensions.get('window');
 
 const SideMenu = ({ navigation, children }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isReportsOpen, setIsReportsOpen] = useState(false); 
+  const [isReportsOpen, setIsReportsOpen] = useState(false);
   const menuAnimation = useState(new Animated.Value(-width * 0.7))[0];
+  const { logout } = useContext(AuthContext); // Usa o logout do contexto
 
   const toggleMenu = (forceClose = false) => {
     const shouldClose = forceClose || isMenuOpen;
@@ -42,8 +41,16 @@ const SideMenu = ({ navigation, children }) => {
   };
 
   const handleMenuNavigation = (screen) => {
-    toggleMenu(true); 
+    toggleMenu(true);
     navigation.navigate(screen);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+    }
   };
 
   return (
@@ -55,7 +62,6 @@ const SideMenu = ({ navigation, children }) => {
         </TouchableOpacity>
         <Text style={styles.menuTitle}>Menu</Text>
 
-        {/* Relatórios com submenu */}
         <TouchableOpacity style={styles.menuItem} onPress={toggleReportsMenu}>
           <View style={styles.menuItemRow}>
             <Text style={styles.menuItemText}>Relatórios</Text>
@@ -91,9 +97,8 @@ const SideMenu = ({ navigation, children }) => {
               style={styles.subMenuItem}
               onPress={() => handleMenuNavigation('ComparativeReportScreen')}
             >
-              <Text style={styles.subMenuItemText}>Relatorio Comparatio</Text>
+              <Text style={styles.subMenuItemText}>Relatorio Comparativo</Text>
             </TouchableOpacity>
-            
           </View>
         )}
 
@@ -104,6 +109,7 @@ const SideMenu = ({ navigation, children }) => {
         >
           <Text style={styles.menuItemText}>Clientes</Text>
         </TouchableOpacity>
+
         <TouchableOpacity
           style={styles.menuItem}
           onPress={() => handleMenuNavigation('CreditoScreen')}
@@ -112,38 +118,40 @@ const SideMenu = ({ navigation, children }) => {
         </TouchableOpacity>
 
         <TouchableOpacity
-  style={styles.menuItem}
-  onPress={() => handleMenuNavigation('RankClientesScreen')}
->
-  <Text style={styles.menuItemText}>Ranking de Clientes</Text>
-</TouchableOpacity>
-
-
-
-<TouchableOpacity
-  style={styles.menuItem}
-  onPress={() => handleMenuNavigation('CrediarioResumo')}
->
-  <Text style={styles.menuItemText}>Resumo do Crediario</Text>
-</TouchableOpacity>
-
-
-<TouchableOpacity
-  style={styles.menuItem}
-  onPress={() => handleMenuNavigation('Estoque')}
->
-  <Text style={styles.menuItemText}>Estoque</Text>
-</TouchableOpacity>
-
+          style={styles.menuItem}
+          onPress={() => handleMenuNavigation('RankClientesScreen')}
+        >
+          <Text style={styles.menuItemText}>Ranking de Clientes</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={() => handleMenuNavigation('CashRegisterScreen',)}
+          onPress={() => handleMenuNavigation('CrediarioResumo')}
         >
-         
+          <Text style={styles.menuItemText}>Resumo do Crediario</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => handleMenuNavigation('Estoque')}
+        >
+          <Text style={styles.menuItemText}>Estoque</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => handleMenuNavigation('CashRegisterScreen')}
+        >
           <Text style={styles.menuItemText}>Caixa</Text>
         </TouchableOpacity>
-       
+
+        {/* Botão de logout na parte inferior direita */}
+        <View style={styles.logoutContainer}>
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Icon name="log-out-outline" size={24} color="#FFF" />
+            <Text style={styles.logoutText}>Sair</Text>
+          </TouchableOpacity>
+        </View>
       </Animated.View>
 
       {/* Área clicável para fechar o menu */}
@@ -233,6 +241,23 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 1,
+  },
+  logoutContainer: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF3B30',
+    padding: 10,
+    borderRadius: 5,
+  },
+  logoutText: {
+    fontSize: 16,
+    color: '#FFF',
+    marginLeft: 10,
   },
 });
 

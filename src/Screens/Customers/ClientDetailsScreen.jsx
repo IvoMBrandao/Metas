@@ -2,23 +2,29 @@ import React from 'react';
 import { View, Text, FlatList, StyleSheet } from 'react-native';
 
 const ClientDetailsScreen = ({ route }) => {
+  // Recebe via route.params: clientName e um array de compras
   const { clientName, purchases } = route.params;
 
+  // Calcula estatísticas: média por compra e média de dias entre compras
   const calculateStats = () => {
     const totalValue = purchases.reduce((sum, sale) => sum + sale.value, 0);
-    const averageValue = totalValue / purchases.length;
+    const averageValue = purchases.length > 0 ? totalValue / purchases.length : 0;
 
     const uniqueDates = [
       ...new Set(
-        purchases.map((sale) => new Date(sale.date).toISOString().split('T')[0])
+        purchases.map((sale) =>
+          new Date(sale.date).toISOString().split('T')[0]
+        )
       ),
     ]
-      .map((date) => new Date(date))
+      .map((dateStr) => new Date(dateStr))
       .sort((a, b) => a - b);
 
     let totalDays = 0;
     for (let i = 1; i < uniqueDates.length; i++) {
-      totalDays += (uniqueDates[i] - uniqueDates[i - 1]) / (1000 * 60 * 60 * 24);
+      const diffInMs = uniqueDates[i] - uniqueDates[i - 1];
+      const diffInDays = diffInMs / (1000 * 60 * 60 * 24);
+      totalDays += diffInDays;
     }
     const averageDays = uniqueDates.length > 1 ? totalDays / (uniqueDates.length - 1) : 0;
 
@@ -43,7 +49,6 @@ const ClientDetailsScreen = ({ route }) => {
         <Text style={styles.title}>Detalhes do Cliente</Text>
         <Text style={styles.clientName}>{clientName}</Text>
       </View>
-
       <View style={styles.statsContainer}>
         <View style={styles.statItem}>
           <Text style={styles.statLabel}>Média por Compra</Text>
@@ -54,25 +59,19 @@ const ClientDetailsScreen = ({ route }) => {
           <Text style={styles.statValue}>{averageDays.toFixed(1)} dias</Text>
         </View>
       </View>
-
       <FlatList
         data={purchases}
         keyExtractor={(item, index) => index.toString()}
         renderItem={renderPurchaseItem}
         contentContainerStyle={styles.listContainer}
-        ListHeaderComponent={
-          <Text style={styles.listHeader}>Compras</Text>
-        }
+        ListHeaderComponent={<Text style={styles.listHeader}>Compras</Text>}
       />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F7F9FC',
-  },
+  container: { flex: 1, backgroundColor: '#F7F9FC' },
   header: {
     padding: 20,
     backgroundColor: '#3A86FF',
@@ -80,17 +79,8 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 20,
     alignItems: 'center',
   },
-  title: {
-    fontSize: 20,
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
-  clientName: {
-    fontSize: 24,
-    color: '#FFF',
-    marginTop: 5,
-    fontWeight: '600',
-  },
+  title: { fontSize: 20, color: '#FFF', fontWeight: 'bold' },
+  clientName: { fontSize: 24, color: '#FFF', marginTop: 5, fontWeight: '600' },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -101,28 +91,11 @@ const styles = StyleSheet.create({
     elevation: 2,
     marginTop: -20,
   },
-  statItem: {
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#6C757D',
-    marginBottom: 5,
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#3A86FF',
-  },
-  listContainer: {
-    padding: 20,
-  },
-  listHeader: {
-    fontSize: 18,
-    color: '#2D3142',
-    fontWeight: '600',
-    marginBottom: 10,
-  },
+  statItem: { alignItems: 'center' },
+  statLabel: { fontSize: 14, color: '#6C757D', marginBottom: 5 },
+  statValue: { fontSize: 18, fontWeight: 'bold', color: '#3A86FF' },
+  listContainer: { padding: 20 },
+  listHeader: { fontSize: 18, color: '#2D3142', fontWeight: '600', marginBottom: 10 },
   purchaseItem: {
     padding: 15,
     backgroundColor: '#FFF',
@@ -135,20 +108,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 5,
   },
-  purchaseDescription: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#2D3142',
-  },
-  purchaseValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#27AE60',
-  },
-  purchaseDate: {
-    fontSize: 14,
-    color: '#6C757D',
-  },
+  purchaseDescription: { fontSize: 16, fontWeight: '600', color: '#2D3142' },
+  purchaseValue: { fontSize: 16, fontWeight: 'bold', color: '#27AE60' },
+  purchaseDate: { fontSize: 14, color: '#6C757D' },
 });
 
 export default ClientDetailsScreen;

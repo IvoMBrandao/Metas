@@ -1,18 +1,23 @@
-// CadastroProdutoScreen.jsx
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   Alert,
   ScrollView,
+  StyleSheet
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AntDesign, Feather } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { getDatabase, ref, get, push, update } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
 
-const CadastroProdutoScreen = ({ navigation }) => {
+const CadastroProdutoScreen = ({ navigation, route }) => {
+  // Recebe lojaId via route
+  const { lojaId } = route.params || {};
+  const { user } = useAuthContext();
+
   const [nome, setNome] = useState('');
   const [codigo, setCodigo] = useState('');
   const [quantidade, setQuantidade] = useState('');
@@ -24,49 +29,96 @@ const CadastroProdutoScreen = ({ navigation }) => {
   const [porcentagem, setPorcentagem] = useState('');
   const [valorVenda, setValorVenda] = useState('');
   const [lucro, setLucro] = useState('');
-  const [fornecedor, setFornecedor] = useState(''); // Novo Campo
+  const [fornecedor, setFornecedor] = useState('');
 
+  // Carrega categorias do estoque (array com { nome, subCategorias: [...] })
   const [categorias, setCategorias] = useState([]);
   const [subCategorias, setSubCategorias] = useState([]);
   const [isCategoriaDropdownVisible, setIsCategoriaDropdownVisible] = useState(false);
   const [isSubCategoriaDropdownVisible, setIsSubCategoriaDropdownVisible] = useState(false);
 
+  // Ao montar o componente, gerar código do produto
   useEffect(() => {
-    loadCategorias();
-    gerarProximoCodigo(); // Gera o próximo código serial ao montar o componente
+    gerarProximoCodigo();
   }, []);
 
+  // Carrega as categorias quando a tela ganha foco
+  useFocusEffect(
+    useCallback(() => {
+      loadCategoriasDoEstoque();
+    }, [])
+  );
+
   /**
-   * Carrega as categorias do AsyncStorage
+   * Lê categorias em:
+   *    users/{uid}/lojas/{lojaId}/estoque/categoriasData
    */
-  const loadCategorias = async () => {
+  const loadCategoriasDoEstoque = async () => {
     try {
-      const savedCategorias = await AsyncStorage.getItem('categoriasData');
-      const parsedCategorias = savedCategorias ? JSON.parse(savedCategorias) : [];
-      setCategorias(parsedCategorias);
+      // Se lojaId ou user.uid inválidos, sai
+      if (!user || !user.uid) {
+        Alert.alert('Erro', 'Usuário não autenticado.');
+        return;
+      }
+      if (!lojaId || typeof lojaId !== 'string' || lojaId.trim() === '') {
+        Alert.alert('Erro', 'lojaId não foi especificado corretamente (categorias).');
+        return;
+      }
+
+      const db = getDatabase();
+      const catRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/categoriasData`);
+      const snapshot = await get(catRef);
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        let parsed = [];
+        if (Array.isArray(data)) {
+          parsed = data.filter(Boolean);
+        } else {
+          parsed = Object.values(data);
+        }
+        setCategorias(parsed);
+      } else {
+        setCategorias([]);
+      }
     } catch (error) {
-      console.error('Erro ao carregar categorias:', error);
+      console.error('Erro ao carregar categorias do estoque:', error);
+      Alert.alert('Erro', 'Não foi possível carregar categorias do estoque.');
     }
   };
 
   /**
-   * Gera o próximo código serial com base nos produtos existentes.
+   * Gera próximo código de produto lendo em:
+   *   users/{uid}/lojas/{lojaId}/estoque/produtos
    */
   const gerarProximoCodigo = async () => {
     try {
-      const savedData = await AsyncStorage.getItem('estoqueData');
-      const produtosExistentes = savedData ? JSON.parse(savedData) : [];
+      // Checa se user ou lojaId são válidos
+      if (!user || !user.uid) {
+        return;
+      }
+      if (!lojaId || typeof lojaId !== 'string' || lojaId.trim() === '') {
+        return;
+      }
 
-      if (produtosExistentes.length === 0) {
-        setCodigo('001'); // Inicia com 001 se não houver produtos
+      const db = getDatabase();
+      const produtosRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos`);
+      const snapshot = await get(produtosRef);
+
+      if (!snapshot.exists()) {
+        // Se não há produtos, começa em '001'
+        setCodigo('001');
       } else {
-        // Extrai os códigos existentes e determina o próximo número
-        const codigos = produtosExistentes
-          .map((prod) => parseInt(prod.codigo))
-          .filter((num) => !isNaN(num));
-        const maxCodigo = Math.max(...codigos);
-        const proximoCodigo = (maxCodigo + 1).toString().padStart(3, '0');
-        setCodigo(proximoCodigo);
+        // converte objeto -> array
+        const data = snapshot.val();
+        const produtosExistentes = Object.keys(data).map((k) => data[k]);
+        const codigos = produtosExistentes.map((p) => parseInt(p.codigo)).filter((n) => !isNaN(n));
+        if (codigos.length === 0) {
+          setCodigo('001');
+        } else {
+          const maxCodigo = Math.max(...codigos);
+          const proximoCodigo = (maxCodigo + 1).toString().padStart(3, '0');
+          setCodigo(proximoCodigo);
+        }
       }
     } catch (error) {
       console.error('Erro ao gerar próximo código:', error);
@@ -74,9 +126,7 @@ const CadastroProdutoScreen = ({ navigation }) => {
     }
   };
 
-  /**
-   * Seleciona uma categoria e mostra subcategorias
-   */
+  // Seleciona categoria e exibe subCategorias
   const handleCategoriaSelect = (selectedCategoria) => {
     setCategoria(selectedCategoria.nome);
     setSubCategorias(selectedCategoria.subCategorias || []);
@@ -84,18 +134,12 @@ const CadastroProdutoScreen = ({ navigation }) => {
     setIsCategoriaDropdownVisible(false);
   };
 
-  /**
-   * Seleciona uma subcategoria
-   */
   const handleSubCategoriaSelect = (selectedSubCategoria) => {
     setSubCategoria(selectedSubCategoria);
     setIsSubCategoriaDropdownVisible(false);
   };
 
-  /**
-   * Calcula valor de venda e lucro, dado valor de compra + % de lucro.
-   * Fórmula: valorVenda = valorCompra + (valorCompra * porcentagem / 100)
-   */
+  // ========== Lógica de cálculo =============
   const calculateFromCompraAndPorcentagem = () => {
     const compraNumber = parseFloat(valorCompra);
     const porcentNumber = parseFloat(porcentagem);
@@ -109,10 +153,6 @@ const CadastroProdutoScreen = ({ navigation }) => {
     }
   };
 
-  /**
-   * Calcula porcentagem e lucro, dado valor de compra + valor de venda.
-   * Fórmula: porcentagem = ((valorVenda - valorCompra) / valorCompra) * 100
-   */
   const calculateFromCompraAndVenda = () => {
     const compraNumber = parseFloat(valorCompra);
     const vendaNumber = parseFloat(valorVenda);
@@ -126,110 +166,18 @@ const CadastroProdutoScreen = ({ navigation }) => {
     }
   };
 
-  /**
-   * Se ao editar o valor de compra o usuário já tiver
-   * preenchido uma porcentagem, recalculamos com base nela.
-   * Se não tiver porcentagem mas tiver valor de venda,
-   * recalculamos a porcentagem a partir desse valor de venda.
-   */
   const handleValorCompraEndEditing = () => {
     const compraNumber = parseFloat(valorCompra);
-
-    // Se for inválido, não faz nada
     if (isNaN(compraNumber)) return;
 
     if (!isNaN(parseFloat(porcentagem)) && parseFloat(porcentagem) !== 0) {
-      // Se já existir uma porcentagem, recalcula a partir dela
       calculateFromCompraAndPorcentagem();
     } else if (!isNaN(parseFloat(valorVenda)) && parseFloat(valorVenda) !== 0) {
-      // Se não há porcentagem, mas há valorVenda, recalcula porcentagem
       calculateFromCompraAndVenda();
     }
-    // Senão, não faz nenhum cálculo
   };
 
-  /**
-   * Salva o produto no AsyncStorage
-   */
-  const saveProduct = async () => {
-    // Validação dos campos obrigatórios
-    if (
-      !nome ||
-      !codigo ||
-      !quantidade ||
-      !categoria ||
-      !dataEntrada ||
-      !unidade ||
-      !valorCompra ||
-      !valorVenda ||
-      !fornecedor // Verifica também o novo campo
-    ) {
-      Alert.alert('Erro', 'Preencha todos os campos!');
-      return;
-    }
-
-    try {
-      const savedData = await AsyncStorage.getItem('estoqueData');
-      const parsedData = savedData ? JSON.parse(savedData) : [];
-
-      // Verificar se o código já existe
-      const existe = parsedData.find((prod) => prod.codigo === codigo);
-      if (existe) {
-        Alert.alert('Erro', 'Já existe um produto com este código. Por favor, insira um código único.');
-        return;
-      }
-
-      // Converte data "DD/MM/AAAA" em ISO "AAAA-MM-DDTHH:MM:SSZ"
-      let dataFormatada = dataEntrada;
-      const [dia, mes, ano] = dataEntrada.split('/');
-      if (dia && mes && ano) {
-        const dataObj = new Date(+ano, mes - 1, +dia);
-        if (isNaN(dataObj)) {
-          Alert.alert('Erro', 'Data de entrada inválida.');
-          return;
-        }
-        dataFormatada = dataObj.toISOString();
-      }
-
-      // Criação da entrada inicial
-      const entradaInicial = {
-        id: Date.now().toString(),
-        data: dataFormatada,
-        quantidade: parseInt(quantidade),
-        valorCompra: parseFloat(valorCompra),
-        porcentagem: parseFloat(porcentagem),
-        valorVenda: parseFloat(valorVenda),
-        lucro: parseFloat(lucro),
-        valorAnterior: 0, // Nenhum valor anterior na entrada inicial
-      };
-
-      const newProduct = {
-        id: Date.now().toString(),
-        nome,
-        codigo,
-        quantidade: parseInt(quantidade),
-        categoria,
-        subCategoria,
-        dataEntrada: dataFormatada,
-        unidade,
-        fornecedor, // Adiciona o novo campo
-        entradas: [entradaInicial], // Array de entradas com a entrada inicial
-      };
-
-      const updatedData = [...parsedData, newProduct];
-      await AsyncStorage.setItem('estoqueData', JSON.stringify(updatedData));
-
-      Alert.alert('Sucesso', 'Produto cadastrado com sucesso!');
-      navigation.goBack();
-    } catch (error) {
-      Alert.alert('Erro', 'Não foi possível salvar o produto.');
-      console.error('Erro ao salvar produto:', error);
-    }
-  };
-
-  /**
-   * Formata a data em DD/MM/AAAA enquanto digita
-   */
+  // Máscara de data "DD/MM/AAAA"
   const handleDataChange = (text) => {
     let cleaned = text.replace(/\D/g, '');
     if (cleaned.length > 2) {
@@ -244,12 +192,100 @@ const CadastroProdutoScreen = ({ navigation }) => {
     setDataEntrada(cleaned);
   };
 
+  // Salva produto
+  const saveProduct = async () => {
+    // Checa se user ou lojaId são válidos
+    if (!user || !user.uid) {
+      Alert.alert('Erro', 'Usuário não autenticado.');
+      return;
+    }
+    if (!lojaId || typeof lojaId !== 'string' || lojaId.trim() === '') {
+      Alert.alert('Erro', 'lojaId não foi especificado corretamente (salvar produto).');
+      return;
+    }
+
+    if (
+      !nome ||
+      !codigo ||
+      !quantidade ||
+      !categoria ||
+      !dataEntrada ||
+      !unidade ||
+      !valorCompra ||
+      !valorVenda ||
+      !fornecedor
+    ) {
+      Alert.alert('Erro', 'Preencha todos os campos!');
+      return;
+    }
+
+    // Converte "DD/MM/AAAA" -> ISO
+    let dataFormatada = dataEntrada;
+    const [dia, mes, ano] = dataEntrada.split('/');
+    if (dia && mes && ano) {
+      const dataObj = new Date(+ano, mes - 1, +dia);
+      if (isNaN(dataObj)) {
+        Alert.alert('Erro', 'Data de entrada inválida.');
+        return;
+      }
+      dataFormatada = dataObj.toISOString();
+    }
+
+    const quantidadeInt = parseInt(quantidade, 10);
+    const compraFloat = parseFloat(valorCompra);
+    const pctFloat = parseFloat(porcentagem);
+    const vendaFloat = parseFloat(valorVenda);
+    const lucroFloat = parseFloat(lucro);
+    const dataAtual = new Date().toISOString();
+
+    // Primeira entrada do produto
+    const entradaInicial = {
+      id: Date.now().toString(),
+      data: dataAtual,
+      quantidade: quantidadeInt,
+      valorCompra: compraFloat,
+      porcentagem: pctFloat,
+      valorVenda: vendaFloat,
+      lucro: lucroFloat,
+      valorAnterior: 0,
+    };
+
+    const newProduct = {
+      nome,
+      codigo,
+      quantidade: quantidadeInt,
+      categoria,
+      subCategoria,
+      dataEntrada: dataFormatada,
+      unidade,
+      fornecedor,
+      entradas: [entradaInicial],
+    };
+
+    try {
+      const db = getDatabase();
+      const produtosRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos`);
+      // Cria pushId
+      const newProdRef = push(produtosRef);
+      // Seta a key no objeto
+      newProduct.id = newProdRef.key;
+
+      // Salva no DB
+      await update(newProdRef, newProduct);
+
+      Alert.alert('Sucesso', 'Produto cadastrado com sucesso!');
+      navigation.goBack();
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível salvar o produto no estoque.');
+      console.error('Erro ao salvar produto:', error);
+    }
+  };
+
   return (
     <ScrollView style={styles.scrollContainer}>
       <View style={styles.container}>
         <Text style={styles.title}>Cadastro de Produto</Text>
 
-        {/* Nome do Produto */}
         <TextInput
           style={styles.input}
           placeholder="Nome do Produto"
@@ -257,7 +293,6 @@ const CadastroProdutoScreen = ({ navigation }) => {
           onChangeText={setNome}
         />
 
-        {/* Código */}
         <TextInput
           style={styles.input}
           placeholder="Código"
@@ -265,7 +300,6 @@ const CadastroProdutoScreen = ({ navigation }) => {
           onChangeText={setCodigo}
         />
 
-        {/* Quantidade */}
         <TextInput
           style={styles.input}
           placeholder="Quantidade"
@@ -274,7 +308,7 @@ const CadastroProdutoScreen = ({ navigation }) => {
           keyboardType="numeric"
         />
 
-        {/* Selecionar Categoria */}
+        {/* Categoria */}
         <View style={styles.row}>
           <TouchableOpacity
             style={[styles.dropdown, styles.fullWidthDropdown]}
@@ -284,9 +318,10 @@ const CadastroProdutoScreen = ({ navigation }) => {
               {categoria || 'Selecionar Categoria'}
             </Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.addButton}
-            onPress={() => navigation.navigate('GerenciarCategoriasScreen')}
+            onPress={() => navigation.navigate('GerenciarCategoriasScreen', { lojaId })}
           >
             <Text style={styles.addButtonText}>+</Text>
           </TouchableOpacity>
@@ -298,9 +333,7 @@ const CadastroProdutoScreen = ({ navigation }) => {
               <TouchableOpacity
                 key={cat.nome}
                 style={styles.dropdownItem}
-                onPress={() => {
-                  handleCategoriaSelect(cat);
-                }}
+                onPress={() => handleCategoriaSelect(cat)}
               >
                 <Text style={styles.dropdownItemText}>{cat.nome}</Text>
               </TouchableOpacity>
@@ -308,7 +341,7 @@ const CadastroProdutoScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Selecionar SubCategoria */}
+        {/* Subcategoria */}
         {subCategorias.length > 0 && (
           <View style={styles.dropdownContainer}>
             <TouchableOpacity
@@ -335,7 +368,6 @@ const CadastroProdutoScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Fornecedor (Novo Campo) */}
         <TextInput
           style={styles.input}
           placeholder="Fornecedor"
@@ -343,7 +375,6 @@ const CadastroProdutoScreen = ({ navigation }) => {
           onChangeText={setFornecedor}
         />
 
-        {/* Data de Entrada */}
         <TextInput
           style={styles.input}
           placeholder="Data de Entrada (DD/MM/AAAA)"
@@ -352,7 +383,6 @@ const CadastroProdutoScreen = ({ navigation }) => {
           onChangeText={handleDataChange}
         />
 
-        {/* Unidade de Medida */}
         <TextInput
           style={styles.input}
           placeholder="Unidade de Medida (ex: kg, un)"
@@ -360,46 +390,34 @@ const CadastroProdutoScreen = ({ navigation }) => {
           onChangeText={setUnidade}
         />
 
-        {/* Valor de Compra */}
         <TextInput
           style={styles.input}
           placeholder="Valor de Compra"
           value={valorCompra}
-          onChangeText={(text) => {
-            setValorCompra(text.replace(',', '.'));
-          }}
+          onChangeText={(text) => setValorCompra(text.replace(',', '.'))}
           keyboardType="numeric"
-          // Quando o usuário sair do campo Valor de Compra
           onEndEditing={handleValorCompraEndEditing}
         />
 
         <View style={styles.row}>
-          {/* Porcentagem */}
           <TextInput
             style={[styles.input, styles.inputHalf]}
             placeholder="% Margem de Lucro"
             value={porcentagem}
-            onChangeText={(text) => {
-              setPorcentagem(text.replace(',', '.'));
-            }}
+            onChangeText={(text) => setPorcentagem(text.replace(',', '.'))}
             keyboardType="numeric"
             onEndEditing={calculateFromCompraAndPorcentagem}
           />
-
-          {/* Valor de Venda */}
           <TextInput
             style={[styles.input, styles.inputHalf]}
             placeholder="Valor de Venda"
             value={valorVenda}
-            onChangeText={(text) => {
-              setValorVenda(text.replace(',', '.'));
-            }}
+            onChangeText={(text) => setValorVenda(text.replace(',', '.'))}
             keyboardType="numeric"
             onEndEditing={calculateFromCompraAndVenda}
           />
         </View>
 
-        {/* Lucro (somente leitura) */}
         <TextInput
           style={[styles.input, { backgroundColor: '#F0F0F0' }]}
           placeholder="Lucro"
@@ -407,7 +425,6 @@ const CadastroProdutoScreen = ({ navigation }) => {
           editable={false}
         />
 
-        {/* Botão Salvar */}
         <TouchableOpacity style={styles.button} onPress={saveProduct}>
           <Text style={styles.buttonText}>Salvar Produto</Text>
         </TouchableOpacity>
@@ -416,17 +433,8 @@ const CadastroProdutoScreen = ({ navigation }) => {
   );
 };
 
-/**
- * Componente para exibir label + value em linha
- */
-const DetailItem = ({ label, value }) => (
-  <View style={styles.detailLine}>
-    <Text style={styles.detailLabel}>{label}</Text>
-    <Text style={styles.detailValue}>{value}</Text>
-  </View>
-);
-
 export default CadastroProdutoScreen;
+
 
 const styles = StyleSheet.create({
   scrollContainer: {
@@ -476,6 +484,9 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: '#FFFFFF',
   },
+  fullWidthDropdown: {
+    width: '100%',
+  },
   dropdownText: {
     fontSize: 16,
     color: '#2D3142',
@@ -507,14 +518,11 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 20, // Ajuste para separar do campo anterior
+    marginTop: 20,
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
-  },
-  fullWidthDropdown: {
-    flex: 1,
   },
 });

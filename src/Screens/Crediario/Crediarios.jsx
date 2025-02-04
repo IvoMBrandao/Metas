@@ -2,227 +2,279 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  FlatList,
   StyleSheet,
   TextInput,
   TouchableOpacity,
   Modal,
   Alert,
+  FlatList,
 } from 'react-native';
 import Checkbox from 'expo-checkbox';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
 
-const CreditoScreen = ({ navigation }) => {
-  const [crediarioSales, setCrediarioSales] = useState([]);
+// Importes do Firebase
+import { getDatabase, ref, get, update } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
+
+export default function CreditoScreen({ route, navigation }) {
+  // Recebemos lojaId da rota
+  const { lojaId } = route.params || {};
+  const { user } = useAuthContext();
+
+  const [crediarios, setCrediarios] = useState([]);
   const [filteredSales, setFilteredSales] = useState([]);
   const [filterCustomer, setFilterCustomer] = useState('');
   const [selectedSale, setSelectedSale] = useState(null);
   const [isModalVisible, setModalVisible] = useState(false);
-  const isFocused = useIsFocused(); // Detecta se a tela está em foco
 
+  const isFocused = useIsFocused();
+
+  // Carrega dados quando a tela está focada
   useEffect(() => {
     if (isFocused) {
-      fetchCrediarioSales(); // Atualiza os dados sempre que a tela for focada
+      fetchCrediariosAbertos();
     }
   }, [isFocused]);
 
-  useEffect(() => {
-    fetchCrediarioSales();
-  }, []);
-
+  // Sempre que crediarios ou filterCustomer mudam, aplicamos filtro
   useEffect(() => {
     applyFilter();
-  }, [filterCustomer, crediarioSales]);
+  }, [filterCustomer, crediarios]);
 
-  const fetchCrediarioSales = async () => {
+  /**
+   * Lê do Firebase todos os crediários "abertos" (closed === false) desta loja.
+   * Importante: aqui, cada "crediario" tem um array "parcels" contendo
+   * { date, number, paid, value }.
+   */
+  const fetchCrediariosAbertos = async () => {
+    if (!user?.uid) {
+      Alert.alert('Erro', 'Usuário não autenticado.');
+      return;
+    }
+    if (!lojaId) {
+      Alert.alert('Erro', 'lojaId não foi fornecido.');
+      return;
+    }
+
     try {
-      const savedData = await AsyncStorage.getItem('financeData');
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        const allCrediarioSales = parsedData
-          .flatMap((meta) =>
-            meta.sales?.filter(
-              (sale) => sale.paymentMethod === 'crediario' && !sale.closed
-            ) || []
-          )
-          .sort((a, b) => {
-            const nextA = a.parcels.find((parcel) => !parcel.paid)?.date || '';
-            const nextB = b.parcels.find((parcel) => !parcel.paid)?.date || '';
-            return new Date(nextA) - new Date(nextB);
-          });
+      const db = getDatabase();
+      const crediariosRef = ref(db, `users/${user.uid}/lojas/${lojaId}/crediarios`);
+      const snapshot = await get(crediariosRef);
 
-        setCrediarioSales(allCrediarioSales);
+      if (!snapshot.exists()) {
+        setCrediarios([]);
+        return;
       }
+
+      // converte OBJ em Array
+      const dataVal = snapshot.val();
+      const credArray = Object.keys(dataVal).map((key) => dataVal[key]);
+
+      // filtra os "closed === false" e ordena pela próxima parcela
+      const abertos = credArray
+        .filter((item) => !item.closed)
+        .sort((a, b) => {
+          // pega a primeira parcela não paga e compara datas
+          const nextA = a.parcels?.find((p) => !p.paid)?.date || '';
+          const nextB = b.parcels?.find((p) => !p.paid)?.date || '';
+          return new Date(nextA) - new Date(nextB);
+        });
+
+      setCrediarios(abertos);
     } catch (error) {
-      Alert.alert('Erro', 'Ocorreu um erro ao carregar as vendas no crediário.');
-      console.error('Erro ao carregar crediário:', error);
+      Alert.alert('Erro', 'Ocorreu ao carregar crediários abertos.');
+      console.error(error);
     }
   };
 
+  /**
+   * Filtra por nome do cliente
+   */
   const applyFilter = () => {
     if (filterCustomer.trim() === '') {
-      setFilteredSales(groupByDueDate(crediarioSales));
+      setFilteredSales(groupByDate(crediarios));
     } else {
-      const filtered = crediarioSales.filter((sale) =>
-        sale.customer.toLowerCase().includes(filterCustomer.toLowerCase())
+      const filtered = crediarios.filter((sale) =>
+        (sale.customer || '').toLowerCase().includes(filterCustomer.toLowerCase())
       );
-      setFilteredSales(groupByDueDate(filtered));
+      setFilteredSales(groupByDate(filtered));
     }
   };
 
-  const groupByDueDate = (sales) => {
+  /**
+   * Agrupa por data da próxima parcela pendente (campo "date")
+   */
+  const groupByDate = (sales) => {
     const grouped = {};
     sales.forEach((sale) => {
-      const nextParcelDate =
-        sale.parcels.find((parcel) => !parcel.paid)?.date || 'Todas pagas';
-      if (!grouped[nextParcelDate]) {
-        grouped[nextParcelDate] = [];
-      }
+      // Encontra a próxima parcela não paga
+      const nextParcelDate = sale.parcels?.find((p) => !p.paid)?.date || 'TodasPagas';
+      if (!grouped[nextParcelDate]) grouped[nextParcelDate] = [];
       grouped[nextParcelDate].push(sale);
     });
 
-    return Object.entries(grouped).map(([date, sales]) => ({
+    return Object.entries(grouped).map(([date, salesArr]) => ({
       date,
-      sales,
+      sales: salesArr,
     }));
   };
 
-  const formatDate = (dateString) => {
-    const [year, month, day] = dateString.split('-');
+  /**
+   * Formata data "AAAA-MM-DD" -> "DD/MM/AAAA"
+   */
+  const formatDate = (isoString) => {
+    if (!isoString) return '---';
+    // isoString deve ser "2025-03-02" por ex.
+    const [year, month, day] = isoString.split('-');
     return `${day}/${month}/${year}`;
   };
 
-  const toggleParcelStatus = async (saleId, parcelIndex) => {
-    try {
-      const savedData = await AsyncStorage.getItem('financeData');
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        const metaIndex = parsedData.findIndex((meta) =>
-          meta.sales?.some((sale) => sale.id === saleId)
-        );
+  /**
+ * Marca/desmarca uma parcela como paga
+ * - grava data "YYYY-MM-DD" em paymentDate
+ */
+const toggleParcelStatus = async (saleId, parcelIndex) => {
+  try {
+    // Precisamos ler do DB -> atualizar -> gravar
+    const db = getDatabase();
+    const crediariosRef = ref(db, `users/${user.uid}/lojas/${lojaId}/crediarios`);
+    const snapshot = await get(crediariosRef);
 
-        if (metaIndex !== -1) {
-          const saleIndex = parsedData[metaIndex].sales.findIndex(
-            (sale) => sale.id === saleId
-          );
+    if (!snapshot.exists()) return;
 
-          const parcel =
-            parsedData[metaIndex].sales[saleIndex].parcels[parcelIndex];
-          const now = new Date().toISOString().split('T')[0];
+    const dataVal = snapshot.val();
+    // localiza o item
+    const key = Object.keys(dataVal).find((k) => dataVal[k].id === saleId);
+    if (!key) return;
 
-          if (!parcel.paid) {
-            parcel.paid = true;
-            parcel.paymentDate = now;
-          } else {
-            parcel.paid = false;
-            parcel.paymentDate = null;
-          }
+    const saleObj = dataVal[key];
 
-          await AsyncStorage.setItem('financeData', JSON.stringify(parsedData));
-          fetchCrediarioSales();
-          setSelectedSale((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  parcels: prev.parcels.map((p, index) =>
-                    index === parcelIndex
-                      ? { ...p, paid: parcel.paid, paymentDate: parcel.paymentDate }
-                      : p
-                  ),
-                }
-              : null
-          );
-        }
-      }
-    } catch (error) {
-      Alert.alert('Erro', 'Não foi possível atualizar a parcela.');
-      console.error('Erro ao atualizar parcela:', error);
+    // alterna "paid"
+    if (saleObj.parcels[parcelIndex].paid) {
+      // se já estava pago, reverte
+      saleObj.parcels[parcelIndex].paid = false;
+      saleObj.parcels[parcelIndex].paymentDate = null;
+    } else {
+      // marca como pago => grava somente a data "YYYY-MM-DD"
+      saleObj.parcels[parcelIndex].paid = true;
+      const onlyDate = new Date().toISOString().split('T')[0];
+      saleObj.parcels[parcelIndex].paymentDate = onlyDate;
     }
-  };
 
+    // faz update no DB
+    await update(ref(db, `users/${user.uid}/lojas/${lojaId}/crediarios/${key}`), saleObj);
+
+    // recarrega e atualiza o selectedSale no modal
+    fetchCrediariosAbertos();
+    setSelectedSale((prev) =>
+      prev
+        ? {
+            ...prev,
+            parcels: prev.parcels.map((p, i) =>
+              i === parcelIndex
+                ? {
+                    ...p,
+                    paid: saleObj.parcels[parcelIndex].paid,
+                    paymentDate: saleObj.parcels[parcelIndex].paymentDate,
+                  }
+                : p
+            ),
+          }
+        : null
+    );
+  } catch (error) {
+    Alert.alert('Erro', 'Não foi possível atualizar a parcela.');
+    console.error(error);
+  }
+};
+
+  /**
+   * Fecha conta (closed = true)
+   */
   const closeSaleAccount = async (saleId) => {
     try {
-      const savedData = await AsyncStorage.getItem('financeData');
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        const metaIndex = parsedData.findIndex((meta) =>
-          meta.sales?.some((sale) => sale.id === saleId)
-        );
+      const db = getDatabase();
+      const crediariosRef = ref(db, `users/${user.uid}/lojas/${lojaId}/crediarios`);
+      const snapshot = await get(crediariosRef);
 
-        if (metaIndex !== -1) {
-          const saleIndex = parsedData[metaIndex].sales.findIndex(
-            (sale) => sale.id === saleId
-          );
+      if (!snapshot.exists()) return;
 
-          parsedData[metaIndex].sales[saleIndex].closed = true;
+      const dataVal = snapshot.val();
+      const key = Object.keys(dataVal).find((k) => dataVal[k].id === saleId);
+      if (!key) return;
 
-          await AsyncStorage.setItem('financeData', JSON.stringify(parsedData));
-          fetchCrediarioSales();
-          setModalVisible(false);
-          Alert.alert('Sucesso', 'Conta fechada com sucesso.');
-        }
-      }
+      const saleObj = dataVal[key];
+      saleObj.closed = true;
+      saleObj.closedDate = new Date().toISOString();
+
+      await update(ref(db, `users/${user.uid}/lojas/${lojaId}/crediarios/${key}`), saleObj);
+
+      fetchCrediariosAbertos();
+      setModalVisible(false);
+      Alert.alert('Sucesso', 'Conta fechada com sucesso!');
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível fechar a conta.');
-      console.error('Erro ao fechar conta:', error);
+      console.error(error);
     }
   };
 
-  const getNextParcelColor = (date) => {
-    if (!date) return '#27AE60'; // Todas pagas
+  /**
+   * Determina cor do texto pela data
+   */
+  const getNextParcelColor = (dateString) => {
+    if (!dateString || dateString === 'TodasPagas') return '#27AE60';
     const now = new Date();
-    const dueDate = new Date(date);
-    const diffDays = Math.ceil((dueDate - now) / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) return '#E74C3C'; // Vencido
-    if (diffDays <= 15) return '#F1C40F'; // A menos de 15 dias
-    return '#27AE60'; // Dentro do prazo
+    const dueDate = new Date(dateString);
+    const diff = (dueDate - now) / (1000 * 60 * 60 * 24);
+    if (diff < 0) return '#E74C3C'; // vencido
+    if (diff <= 15) return '#F1C40F'; // faltam <= 15 dias
+    return '#27AE60'; // ok
   };
 
-  const renderSaleItem = ({ item }) => {
-    const nextParcel = item.parcels.find((parcel) => !parcel.paid);
+  /**
+   * Render item do group
+   */
+  const renderGroupedItem = ({ item }) => {
+    // item = { date: '2025-03-02', sales: [...], ou "TodasPagas" }
+    const dateLabel =
+      item.date === 'TodasPagas' ? 'Todas as parcelas pagas' : formatDate(item.date);
+
     return (
-      <TouchableOpacity
-        style={styles.saleItem}
-        onPress={() => {
-          setSelectedSale(item);
-          setModalVisible(true);
-        }}
-      >
-        <Text style={styles.saleDescription}>{item.description}</Text>
-        <Text style={styles.saleCustomer}>Cliente: {item.customer}</Text>
-        {nextParcel && (
-          <Text
-            style={[
-              styles.nextParcel,
-              { color: getNextParcelColor(nextParcel.date) },
-            ]}
-          >
-            Próxima Parcela: {formatDate(nextParcel.date)} - R$ {nextParcel.value}
-          </Text>
-        )}
-      </TouchableOpacity>
+      <View style={styles.groupedItem}>
+        <Text style={[styles.groupDate, { color: getNextParcelColor(item.date) }]}>
+          Data de Vencimento: {dateLabel}
+        </Text>
+
+        <FlatList
+          data={item.sales}
+          keyExtractor={(sale) => String(sale.id)}
+          renderItem={({ item: saleItem }) => (
+            <TouchableOpacity
+              style={styles.saleItem}
+              onPress={() => {
+                setSelectedSale(saleItem);
+                setModalVisible(true);
+              }}
+            >
+              <Text style={styles.saleDescription}>{saleItem.description}</Text>
+              <Text style={styles.saleCustomer}>Cliente: {saleItem.customer}</Text>
+              {/* Exibir próxima parcela pendente, se houver */}
+              {saleItem.parcels.some((p) => !p.paid) && (
+                <Text style={styles.nextParcelInfo}>
+                  Próx. Parcela: {formatDate(saleItem.parcels.find((p) => !p.paid)?.date || '')}
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
+        />
+      </View>
     );
   };
 
-  const renderGroupedItem = ({ item }) => (
-    <View style={styles.groupedItem}>
-      <Text style={styles.groupDate}>
-        Data de Vencimento:{' '}
-        {item.date !== 'Todas pagas' ? formatDate(item.date) : 'Todas pagas'}
-      </Text>
-      <FlatList
-        data={item.sales}
-        keyExtractor={(sale) => sale.id}
-        renderItem={renderSaleItem}
-      />
-    </View>
-  );
-
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Compras no Crediário</Text>
+      <Text style={styles.title}>Compras no Crediário - Loja {lojaId}</Text>
+
       <TextInput
         style={styles.filterInput}
         placeholder="Filtrar por cliente..."
@@ -230,6 +282,7 @@ const CreditoScreen = ({ navigation }) => {
         onChangeText={setFilterCustomer}
         placeholderTextColor="#BDBDBD"
       />
+
       {filteredSales.length > 0 ? (
         <FlatList
           data={filteredSales}
@@ -239,12 +292,16 @@ const CreditoScreen = ({ navigation }) => {
       ) : (
         <Text style={styles.noSales}>Nenhuma compra no crediário encontrada.</Text>
       )}
+
+      {/* Botão para ver finalizadas (contas fechadas) */}
       <TouchableOpacity
         style={styles.completedButton}
-        onPress={() => navigation.navigate('Finalizadas')}
+        onPress={() => navigation.navigate('Finalizadas', { lojaId })}
       >
         <Text style={styles.completedButtonText}>Ver Finalizadas</Text>
       </TouchableOpacity>
+
+      {/* Modal Detalhe */}
       <Modal visible={isModalVisible} animationType="slide" transparent>
         <View style={styles.modalContainer}>
           {selectedSale && (
@@ -256,29 +313,38 @@ const CreditoScreen = ({ navigation }) => {
               <Text style={styles.modalText}>
                 Cliente: {selectedSale.customer}
               </Text>
+              <Text style={styles.modalText}>
+                Valor Total: R${Number(selectedSale.amount || 0).toFixed(2)}
+              </Text>
+
               <FlatList
                 data={selectedSale.parcels}
-                keyExtractor={(item, index) => index.toString()}
-                renderItem={({ item, index }) => (
-                  <View style={styles.parcelItem}>
-                    <Text style={styles.parcelText}>
-                      Parcela {item.number}: R$ {item.value} -{' '}
-                      {formatDate(item.date)}
-                      {item.paid && item.paymentDate
-                        ? ` (Pago em: ${formatDate(item.paymentDate)})`
-                        : ''}
-                    </Text>
-                    <Checkbox
-                      value={item.paid}
-                      onValueChange={() =>
-                        toggleParcelStatus(selectedSale.id, index)
-                      }
-                      color={item.paid ? '#3A86FF' : undefined}
-                    />
-                  </View>
-                )}
+                keyExtractor={(item, index) => String(index)}
+                renderItem={({ item: parcel, index }) => {
+                  // IMPORTANTE: parcel.date e parcel.value
+                  // "date" = "2025-03-02", "value" = "95.00" etc
+                  const parcelValue = parseFloat(parcel.value) || 0;
+                  return (
+                    <View style={styles.parcelItem}>
+                      <Text style={styles.parcelText}>
+                        Parcela {parcel.number}: R$ {parcelValue.toFixed(2)} -{' '}
+                        {formatDate(parcel.date)}
+                        {parcel.paid && parcel.paymentDate
+                          ? ` (Pago em: ${formatDate(parcel.paymentDate)})`
+                          : ''}
+                      </Text>
+                      <Checkbox
+                        value={parcel.paid}
+                        onValueChange={() => toggleParcelStatus(selectedSale.id, index)}
+                        color={parcel.paid ? '#3A86FF' : undefined}
+                      />
+                    </View>
+                  );
+                }}
               />
-              {selectedSale.parcels.every((parcel) => parcel.paid) && (
+
+              {/* Só mostra botao FecharConta se todas pagas */}
+              {selectedSale.parcels.every((p) => p.paid) && (
                 <TouchableOpacity
                   style={styles.closeAccountButton}
                   onPress={() => closeSaleAccount(selectedSale.id)}
@@ -286,6 +352,7 @@ const CreditoScreen = ({ navigation }) => {
                   <Text style={styles.closeAccountButtonText}>Fechar Conta</Text>
                 </TouchableOpacity>
               )}
+
               <TouchableOpacity
                 style={styles.closeButton}
                 onPress={() => setModalVisible(false)}
@@ -298,7 +365,7 @@ const CreditoScreen = ({ navigation }) => {
       </Modal>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -311,6 +378,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 20,
     color: '#2D3142',
+    textAlign: 'center',
   },
   filterInput: {
     borderWidth: 1,
@@ -321,6 +389,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     fontSize: 16,
     color: '#2D3142',
+  },
+  noSales: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#BDBDBD',
+  },
+  groupedItem: {
+    marginBottom: 20,
+  },
+  groupDate: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 10,
   },
   saleItem: {
     padding: 15,
@@ -342,36 +423,10 @@ const styles = StyleSheet.create({
     color: '#3A86FF',
     marginVertical: 5,
   },
-  nextParcel: {
+  nextParcelInfo: {
     fontSize: 14,
     marginTop: 5,
-  },
-  groupDate: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 10,
     color: '#2D3142',
-  },
-  parcelItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  parcelText: {
-    fontSize: 16,
-    color: '#2D3142',
-  },
-  closeAccountButton: {
-    marginTop: 10,
-    backgroundColor: '#3A86FF',
-    padding: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  closeAccountButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
   },
   completedButton: {
     backgroundColor: '#27AE60',
@@ -386,14 +441,14 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
   modalContent: {
-    width: '98%',
+    width: '90%',
     padding: 20,
-    backgroundColor: '#FFFFFF',   
+    backgroundColor: '#FFFFFF',
     borderRadius: 8,
   },
   modalTitle: {
@@ -401,14 +456,40 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 10,
     color: '#2D3142',
+    textAlign: 'center',
   },
   modalText: {
     fontSize: 16,
     marginBottom: 5,
     color: '#2D3142',
   },
+  parcelItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  parcelText: {
+    fontSize: 15,
+    color: '#2D3142',
+    marginRight: 10,
+    flexWrap: 'wrap',
+    flex: 1,
+  },
+  closeAccountButton: {
+    marginTop: 10,
+    backgroundColor: '#3A86FF',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  closeAccountButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+  },
   closeButton: {
-    marginTop: 20,
+    marginTop: 10,
     backgroundColor: '#E74C3C',
     padding: 10,
     borderRadius: 8,
@@ -418,11 +499,4 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
   },
-  noSales: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#BDBDBD',
-  },
 });
-
-export default CreditoScreen;

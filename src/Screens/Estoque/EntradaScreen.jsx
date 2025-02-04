@@ -1,5 +1,3 @@
-// EntradaScreen.jsx
-
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -11,11 +9,16 @@ import {
   Alert,
   StyleSheet
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AntDesign, Feather } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native'; // Importação do hook
+import { AntDesign } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import { getDatabase, ref, get, set, update, push } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
 
-const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
+const EntradaScreen = ({ navigation, route }) => {
+  // Receba lojaId para saber onde buscar produtos
+  const { lojaId } = route.params;
+  const { user } = useAuthContext();
+
   const [produtos, setProdutos] = useState([]);
   const [filteredProdutos, setFilteredProdutos] = useState([]);
   const [filterValue, setFilterValue] = useState('');
@@ -31,32 +34,35 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
   const [valorVenda, setValorVenda] = useState('');
 
   /**
-   * Função para carregar dados do AsyncStorage (lista de produtos).
+   * Carrega produtos do Firebase
    */
   const fetchProdutos = async () => {
     try {
-      const data = await AsyncStorage.getItem('estoqueData');
-      const parsed = data ? JSON.parse(data) : [];
-      setProdutos(parsed);
-      setFilteredProdutos(parsed);
+      const db = getDatabase();
+      const produtosRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos`);
+      const snapshot = await get(produtosRef);
+
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const arrayProdutos = Object.keys(data).map((key) => data[key]);
+        setProdutos(arrayProdutos);
+        setFilteredProdutos(arrayProdutos);
+      } else {
+        setProdutos([]);
+        setFilteredProdutos([]);
+      }
     } catch (error) {
       console.error(error);
-      Alert.alert('Erro', 'Não foi possível carregar os produtos.');
+      Alert.alert('Erro', 'Não foi possível carregar os produtos do Firebase.');
     }
   };
 
-  /**
-   * Hook para executar fetchProdutos sempre que a tela ganhar foco.
-   */
   useFocusEffect(
     useCallback(() => {
       fetchProdutos();
     }, [])
   );
 
-  /**
-   * Filtro básico (nome ou código).
-   */
   const filtrar = (text) => {
     setFilterValue(text);
     if (!text.trim()) {
@@ -64,33 +70,35 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
       return;
     }
     const filtrados = produtos.filter((prod) =>
-      prod.nome.toLowerCase().includes(text.toLowerCase()) ||
-      prod.codigo.toLowerCase().includes(text.toLowerCase())
+      prod.nome?.toLowerCase().includes(text.toLowerCase()) ||
+      prod.codigo?.toLowerCase().includes(text.toLowerCase())
     );
     setFilteredProdutos(filtrados);
   };
 
   /**
-   * Ao selecionar um produto, abre modal e pré-carrega os valores.
+   * Ao selecionar um produto, abrimos o modal
    */
   const handleSelectProduto = (produto) => {
     setProdutoSelecionado(produto);
     setQuantidadeEntrada('');
-    // Obter a última entrada para pré-carregar os valores
-    const ultimaEntrada = produto.entradas && produto.entradas.length > 0 
-      ? produto.entradas[produto.entradas.length - 1]
-      : null;
 
-    // Corrigido: Valor de Compra deve ser obtido de valorCompra
-    setValorCompra(ultimaEntrada ? ultimaEntrada.valorCompra.toString() : '');
-    setPorcentagem(ultimaEntrada ? ultimaEntrada.porcentagem.toString() : '');
-    setValorVenda(ultimaEntrada ? ultimaEntrada.valorVenda.toString() : '');
+    // Se existe a última entrada, usamos para pré-carregar
+    if (produto.entradas && produto.entradas.length > 0) {
+      const ultimaEntrada = produto.entradas[produto.entradas.length - 1];
+      setValorCompra(ultimaEntrada.valorCompra.toString());
+      setPorcentagem(ultimaEntrada.porcentagem.toString());
+      setValorVenda(ultimaEntrada.valorVenda.toString());
+    } else {
+      setValorCompra('');
+      setPorcentagem('');
+      setValorVenda('');
+    }
+
     setIsModalVisible(true);
   };
 
-  // ==============================
-  // FUNÇÕES DE CÁLCULO
-  // ==============================
+  // Calculos
   const calcValorVenda = (compra, pct) => {
     if (!isNaN(compra) && !isNaN(pct)) {
       return (compra + (compra * pct) / 100).toFixed(2);
@@ -105,39 +113,20 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
     return '';
   };
 
-  // ==============================
-  // HANDLERS DOS INPUTS
-  // ==============================
-
-  /**
-   * Se o usuário altera ValorCompra:
-   *  - Se já tem Porcentagem preenchida, recalcula ValorVenda.
-   *  - Se não tem Porcentagem mas tem ValorVenda, recalcula Porcentagem.
-   *  - Se ambos estão vazios, não faz nada.
-   */
   const handleValorCompraChange = (text) => {
     setValorCompra(text);
     const compra = parseFloat(text) || 0;
     const pct = parseFloat(porcentagem) || 0;
     const venda = parseFloat(valorVenda) || 0;
 
-    // Se já existir uma porcentagem, prioriza calcular ValorVenda
     if (porcentagem) {
       setValorVenda(calcValorVenda(compra, pct));
-    }
-    // Se não existe porcentagem, mas existe valorVenda,
-    // então prioriza recalcular porcentagem:
-    else if (valorVenda) {
+    } else if (valorVenda) {
       const newPct = calcPorcentagem(compra, venda);
       setPorcentagem(newPct);
     }
-    // Se ambos vazios, nada muda
   };
 
-  /**
-   * Se o usuário altera a Porcentagem -> recalcular ValorVenda
-   *  (mantém ValorCompra fixo).
-   */
   const handlePorcentagemChange = (text) => {
     setPorcentagem(text);
     const compra = parseFloat(valorCompra) || 0;
@@ -150,10 +139,6 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
     }
   };
 
-  /**
-   * Se o usuário altera o ValorVenda -> recalcular Porcentagem
-   *  (mantém ValorCompra fixo).
-   */
   const handleValorVendaChange = (text) => {
     setValorVenda(text);
     const compra = parseFloat(valorCompra) || 0;
@@ -167,7 +152,7 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
   };
 
   /**
-   * Salva a entrada no produto e também em um histórico.
+   * Salva a entrada no produto e registra movimentação
    */
   const handleSalvarEntrada = async () => {
     if (!quantidadeEntrada || !valorCompra) {
@@ -175,53 +160,63 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
       return;
     }
 
-    const quantidade = parseInt(quantidadeEntrada, 10);
-    const compra = parseFloat(valorCompra);
-    const pct = parseFloat(porcentagem);
-    const venda = parseFloat(valorVenda);
-    const lucroCalculado = venda - compra;
-    const dataAtual = new Date().toISOString(); // Inclui data e hora
-
-    // Criação da nova entrada
-    const novaEntrada = {
-      id: Date.now().toString(),
-      data: dataAtual,
-      quantidade: quantidade,
-      valorCompra: compra,
-      porcentagem: pct,
-      valorVenda: venda,
-      lucro: lucroCalculado,
-      valorAnterior: produtoSelecionado.entradas && produtoSelecionado.entradas.length > 0 
-        ? produtoSelecionado.entradas[produtoSelecionado.entradas.length - 1].valorVenda 
-        : 0
-    };
-
-    // Atualiza o array de entradas
-    const novasEntradas = produtoSelecionado.entradas ? [...produtoSelecionado.entradas, novaEntrada] : [novaEntrada];
-
-    // Atualiza a quantidade total do produto
-    const novaQuantidade = produtoSelecionado.quantidade + quantidade;
-
-    const novoProduto = {
-      ...produtoSelecionado,
-      quantidade: novaQuantidade,
-      entradas: novasEntradas,
-      dataEntrada: dataAtual // Opcional: Atualizar data de entrada se necessário
-    };
-
-    // Atualiza no array principal
-    const index = produtos.findIndex((p) => p.id === produtoSelecionado.id);
-    if (index !== -1) {
-      produtos[index] = novoProduto;
-    }
-
     try {
-      await AsyncStorage.setItem('estoqueData', JSON.stringify(produtos));
-      setProdutos([...produtos]);
-      setFilteredProdutos([...produtos]);
+      const quantidade = parseInt(quantidadeEntrada, 10);
+      const compra = parseFloat(valorCompra) || 0;
+      const pct = parseFloat(porcentagem) || 0;
+      const venda = parseFloat(valorVenda) || 0;
+      const lucroCalculado = venda - compra;
+      const dataAtual = new Date().toISOString();
 
-      // Salva histórico de entrada (opcional, conforme sua necessidade)
-      await salvarHistoricoEntrada(novoProduto, quantidadeEntrada);
+      // Criação da nova entrada
+      const novaEntrada = {
+        id: Date.now().toString(),
+        data: dataAtual,
+        quantidade,
+        valorCompra: compra,
+        porcentagem: pct,
+        valorVenda: venda,
+        lucro: lucroCalculado,
+        valorAnterior:
+          produtoSelecionado.entradas && produtoSelecionado.entradas.length > 0
+            ? produtoSelecionado.entradas[produtoSelecionado.entradas.length - 1].valorVenda
+            : 0
+      };
+
+      // Atualiza array de entradas
+      const novasEntradas = produtoSelecionado.entradas
+        ? [...produtoSelecionado.entradas, novaEntrada]
+        : [novaEntrada];
+
+      // Atualiza a quantidade total
+      const novaQuantidade = (produtoSelecionado.quantidade || 0) + quantidade;
+
+      const novoProduto = {
+        ...produtoSelecionado,
+        quantidade: novaQuantidade,
+        entradas: novasEntradas,
+        // dataEntrada: dataAtual  // Se quiser atualizar a data de entrada
+      };
+
+      // 1. Atualiza produto no Firebase
+      const db = getDatabase();
+      const produtoRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos/${produtoSelecionado.id}`);
+      await update(produtoRef, novoProduto);
+
+      // 2. Registra movimentação em users/{uid}/movimentacoesData
+      const movRef = ref(db, `users/${user.uid}/movimentacoesData`);
+      const novaMovRef = push(movRef);
+      const novaMovimentacao = {
+        id: novaMovRef.key,
+        produtoId: produtoSelecionado.id,
+        tipoMovimento: 'entrada',
+        quantidade,
+        valorCompra: compra,
+        porcentagem: pct,
+        valorVenda: venda,
+        data: dataAtual,
+      };
+      await set(novaMovRef, novaMovimentacao);
 
       Alert.alert('Sucesso', 'Entrada salva com sucesso!', [
         {
@@ -229,41 +224,14 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
           onPress: () => setIsModalVisible(false),
         },
       ]);
+      // Recarrega produtos
+      fetchProdutos();
     } catch (error) {
-      Alert.alert('Erro', 'Não foi possível salvar a entrada.');
+      Alert.alert('Erro', 'Não foi possível salvar a entrada no Firebase.');
       console.error('Erro ao salvar entrada:', error);
     }
   };
 
-  /**
-   * Salva um registro de entrada no AsyncStorage (movimentacoesData).
-   */
-  const salvarHistoricoEntrada = async (produto, qtdEntrada) => {
-    try {
-      const data = await AsyncStorage.getItem('movimentacoesData');
-      const movs = data ? JSON.parse(data) : [];
-      const novaMov = {
-        id: Date.now().toString(),
-        produtoId: produto.id,
-        tipoMovimento: 'entrada',
-        quantidade: qtdEntrada,
-        valorCompra: parseFloat(valorCompra),
-        porcentagem: parseFloat(porcentagem),
-        valorVenda: parseFloat(valorVenda),
-        data: new Date().toISOString(), // Salva data e hora
-      };
-      movs.push(novaMov);
-
-      await AsyncStorage.setItem('movimentacoesData', JSON.stringify(movs));
-    } catch (error) {
-      console.error(error);
-      Alert.alert('Erro', 'Não foi possível salvar o histórico de entrada.');
-    }
-  };
-
-  /**
-   * Renderiza cada item da lista de produtos.
-   */
   const renderProduto = ({ item }) => (
     <TouchableOpacity
       style={styles.productItem}
@@ -278,9 +246,6 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
     </TouchableOpacity>
   );
 
-  // ==============================
-  // RENDER PRINCIPAL
-  // ==============================
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Entrada de Mercadorias</Text>
@@ -368,7 +333,7 @@ const EntradaScreen = ({ navigation }) => { // Recebendo navigation via props
       {/* Botão flutuante para cadastrar novo produto */}
       <TouchableOpacity
         style={styles.floatingButton}
-        onPress={() => navigation.navigate('CadastroProduto')}
+        onPress={() => navigation.navigate('CadastroProduto', { lojaId })}
       >
         <AntDesign name="plus" size={32} color="#FFFFFF" />
       </TouchableOpacity>
@@ -404,7 +369,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFF',
     borderRadius: 8,
-    // Sombra leve
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
@@ -432,8 +396,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     color: '#777',
   },
-
-  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -444,7 +406,6 @@ const styles = StyleSheet.create({
     margin: 20,
     borderRadius: 10,
     padding: 16,
-    // sombra
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.07,
@@ -496,7 +457,6 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
-    // Sombra no botão flutuante
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,

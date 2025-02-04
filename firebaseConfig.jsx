@@ -1,5 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { getDatabase } from 'firebase/database'; // Para Realtime Database
+import { getFirestore } from 'firebase/firestore'; // Para Firestore
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -11,10 +13,18 @@ const firebaseConfig = {
   appId: "1:145338175864:android:98d543639aae236b93f88d",
 };
 
+// Inicializa o app Firebase
 const app = initializeApp(firebaseConfig);
 
+// Inicializa o Auth com persistência usando AsyncStorage
 const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(AsyncStorage),
 });
 
-export { app, auth };
+// Inicializa o Realtime Database
+const database = getDatabase(app);
+
+// Inicializa o Firestore
+const firestore = getFirestore(app);
+
+export { app, auth, database, firestore };

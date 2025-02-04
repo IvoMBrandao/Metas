@@ -34,6 +34,7 @@ import EntradaScreen from '../Screens/Estoque/EntradaScreen';
 import SaidaManualScreen from '../Screens/Estoque/SaidaManualScreen';
 import RelatorioEstoqueScreen from '../Screens/Estoque/RelatorioEstoques';
 import LoadingScreen from '../Screens/LoadingScreen/LoadingScreen'; // Tela de carregamento
+import LojaScreen from '../Screens/Lojas/LojaScreen';
 
 const Stack = createStackNavigator();
 
@@ -50,6 +51,7 @@ export const PublicRoutes = () => {
       {user && user.emailVerified ? (
         // Se o usuário estiver autenticado e com e-mail verificado
         <>
+        <Stack.Screen name="loja" component={LojaScreen} />
           <Stack.Screen name="Goal" component={GoalScreen} />
           <Stack.Screen name="Report" component={ReportScreen} />
           <Stack.Screen name="AddGoal" component={AddGoalScreen} />

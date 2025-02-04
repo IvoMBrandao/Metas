@@ -1,5 +1,3 @@
-// ProdutoDetalhesScreen.jsx
-
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -9,10 +7,13 @@ import {
   FlatList,
   ActivityIndicator,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getDatabase, ref, get } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
 
 const ProdutoDetalhesScreen = ({ route, navigation }) => {
-  const { productId } = route.params;
+  const { productId, lojaId } = route.params;
+  const { user } = useAuthContext();
+
   const [produto, setProduto] = useState(null);
   const [entradas, setEntradas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,28 +22,23 @@ const ProdutoDetalhesScreen = ({ route, navigation }) => {
     fetchProdutoDetalhes();
   }, []);
 
-  /**
-   * Carrega o produto específico e suas entradas do AsyncStorage
-   */
   const fetchProdutoDetalhes = async () => {
     try {
-      // Carrega produtos do estoque
-      const savedData = await AsyncStorage.getItem('estoqueData');
-      const produtos = savedData ? JSON.parse(savedData) : [];
-
-      const item = produtos.find((p) => p.id === productId);
-      if (item) {
-        setProduto(item);
-        // Obtém as entradas diretamente do produto
-        const entradasDoProduto = item.entradas ? item.entradas : [];
-        // Ordena as entradas por data (mais recentes primeiro)
-        entradasDoProduto.sort((a, b) => new Date(b.data) - new Date(a.data));
-        setEntradas(entradasDoProduto);
-      } else {
-        Alert.alert('Erro', 'Produto não encontrado.');
+      const db = getDatabase();
+      const produtoRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos/${productId}`);
+      const snapshot = await get(produtoRef);
+      if (!snapshot.exists()) {
+        Alert.alert('Erro', 'Produto não encontrado no Firebase.');
         navigation.goBack();
         return;
       }
+      const item = snapshot.val();
+      setProduto(item);
+
+      const entradasDoProduto = item.entradas ? [...item.entradas] : [];
+      // Ordenar por data desc
+      entradasDoProduto.sort((a, b) => new Date(b.data) - new Date(a.data));
+      setEntradas(entradasDoProduto);
 
       setLoading(false);
     } catch (error) {
@@ -52,32 +48,20 @@ const ProdutoDetalhesScreen = ({ route, navigation }) => {
     }
   };
 
-  /**
-   * Formata uma string de data ISO para "DD/MM/YYYY"
-   * @param {string} dataISO - Data no formato ISO (e.g., "2023-10-21T15:30:45.000Z")
-   * @returns {string} - Data formatada (e.g., "21/10/2023")
-   */
   const formatDate = (dataISO) => {
     if (!dataISO) return '';
-
     const date = new Date(dataISO);
-
+    if (isNaN(date.getTime())) return dataISO; // se não for data ISO
     const dia = String(date.getDate()).padStart(2, '0');
-    const mes = String(date.getMonth() + 1).padStart(2, '0'); // Janeiro é 0
+    const mes = String(date.getMonth() + 1).padStart(2, '0');
     const ano = date.getFullYear();
-
     return `${dia}/${mes}/${ano}`;
   };
 
-  /**
-   * Renderiza cada entrada na lista de histórico
-   */
   const renderEntrada = ({ item }) => (
     <View style={styles.entradaItem}>
       <Text style={styles.entradaTipo}>Entrada</Text>
-      <Text style={styles.entradaDetalhes}>
-        Quantidade: {item.quantidade} {produto.unidade}
-      </Text>
+      <Text style={styles.entradaDetalhes}>Quantidade: {item.quantidade} {produto.unidade}</Text>
       <Text style={styles.entradaDetalhes}>
         Valor de Compra: R$ {typeof item.valorCompra === 'number' ? item.valorCompra.toFixed(2) : '0.00'}
       </Text>
@@ -93,11 +77,7 @@ const ProdutoDetalhesScreen = ({ route, navigation }) => {
     </View>
   );
 
-  /**
-   * Renderiza o cabeçalho da lista com os detalhes do produto
-   */
   const renderHeader = () => {
-    // Obter a última entrada para exibir detalhes atualizados
     const latestEntrada = entradas.length > 0 ? entradas[0] : null;
 
     return (
@@ -109,7 +89,6 @@ const ProdutoDetalhesScreen = ({ route, navigation }) => {
           value={`${produto.quantidade} ${produto.unidade}`}
         />
         <DetailItem label="Categoria:" value={produto.categoria} />
-
         {produto.subCategoria ? (
           <DetailItem label="Subcategoria:" value={produto.subCategoria} />
         ) : null}
@@ -120,35 +99,35 @@ const ProdutoDetalhesScreen = ({ route, navigation }) => {
         />
         <DetailItem
           label="Valor de Compra:"
-          value={`R$ ${
+          value={
             latestEntrada && typeof latestEntrada.valorCompra === 'number'
-              ? latestEntrada.valorCompra.toFixed(2)
-              : '0.00'
-          }`}
+              ? `R$ ${latestEntrada.valorCompra.toFixed(2)}`
+              : 'R$ 0.00'
+          }
         />
         <DetailItem
           label="Valor de Venda:"
-          value={`R$ ${
+          value={
             latestEntrada && typeof latestEntrada.valorVenda === 'number'
-              ? latestEntrada.valorVenda.toFixed(2)
-              : '0.00'
-          }`}
+              ? `R$ ${latestEntrada.valorVenda.toFixed(2)}`
+              : 'R$ 0.00'
+          }
         />
         <DetailItem
           label="Lucro:"
-          value={`R$ ${
+          value={
             latestEntrada && typeof latestEntrada.lucro === 'number'
-              ? latestEntrada.lucro.toFixed(2)
-              : '0.00'
-          }`}
+              ? `R$ ${latestEntrada.lucro.toFixed(2)}`
+              : 'R$ 0.00'
+          }
         />
         <DetailItem
           label="Margem de Lucro:"
-          value={`${
+          value={
             latestEntrada && typeof latestEntrada.porcentagem === 'number'
-              ? latestEntrada.porcentagem.toFixed(2)
-              : '0.00'
-          }%`}
+              ? `${latestEntrada.porcentagem.toFixed(2)}%`
+              : '0.00%'
+          }
         />
         <Text style={styles.entradasTitle}>Histórico de Entradas</Text>
       </View>
@@ -180,9 +159,6 @@ const ProdutoDetalhesScreen = ({ route, navigation }) => {
   );
 };
 
-/**
- * Componente para exibir label + value em linha
- */
 const DetailItem = ({ label, value }) => (
   <View style={styles.detailLine}>
     <Text style={styles.detailLabel}>{label}</Text>
@@ -215,7 +191,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 20,
     paddingHorizontal: 15,
-    // Sombra leve para dar aspecto de card
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.07,
@@ -251,7 +226,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 15,
     marginBottom: 10,
-    // Sombra leve
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,

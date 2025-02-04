@@ -4,15 +4,22 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  FlatList,
   StyleSheet,
   Alert,
+  Platform,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-export default function AddCrediarioScreen({ navigation }) {
+import { useAuthContext } from '../../contexts/auth';
+// Importar Firebase
+import { getDatabase, ref, push, update, get } from 'firebase/database';
+
+export default function AddCrediarioScreen({ route, navigation }) {
+  // Recebemos lojaId como parâmetro
+  const { lojaId } = route.params || {};
+  const { user } = useAuthContext();
+
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [amount, setAmount] = useState('');
@@ -21,69 +28,134 @@ export default function AddCrediarioScreen({ navigation }) {
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   useEffect(() => {
-    const loadCustomers = async () => {
-      try {
-        const savedCustomers = await AsyncStorage.getItem('customersData');
-        const parsedCustomers = savedCustomers ? JSON.parse(savedCustomers) : [];
-        setCustomers(parsedCustomers);
-      } catch (error) {
-        Alert.alert('Erro', 'Ocorreu um erro ao carregar os clientes.');
-      }
-    };
-
-    loadCustomers();
-  }, []);
-
-  const handleAddCrediario = async () => {
-    if (!selectedCustomer || !amount || !installments) {
-      Alert.alert('Erro', 'Todos os campos são obrigatórios.');
+    if (!user?.uid) {
+      Alert.alert('Erro', 'Usuário não autenticado.');
       return;
     }
+    if (!lojaId) {
+      Alert.alert('Erro', 'Loja não foi fornecida.');
+      return;
+    }
+    fetchCustomers();
+  }, []);
 
-    const newCrediario = {
-      id: Date.now(),
-      customer: selectedCustomer,
-      amount: parseFloat(amount),
-      installments: parseInt(installments),
-      purchaseDate: purchaseDate.toISOString(),
-      parcels: Array.from({ length: installments }, (_, index) => ({
-        id: index + 1,
-        dueDate: new Date(
+  /**
+   * Lê clientes em /users/{uid}/lojas/{lojaId}/clientes
+   */
+  const fetchCustomers = async () => {
+    try {
+      const db = getDatabase();
+      const customersRef = ref(db, `users/${user.uid}/lojas/${lojaId}/clientes`);
+      const snapshot = await get(customersRef);
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const parsed = Object.keys(data).map((key) => ({
+          id: key,
+          ...data[key],
+        }));
+        setCustomers(parsed);
+      } else {
+        setCustomers([]);
+      }
+    } catch (error) {
+      Alert.alert('Erro', 'Ocorreu um erro ao carregar os clientes.');
+      console.error(error);
+    }
+  };
+
+  /**
+   * Salva novo crediário em /users/{uid}/lojas/{lojaId}/crediarios
+   */
+  const handleAddCrediario = async () => {
+    try {
+      if (!user?.uid) {
+        Alert.alert('Erro', 'Usuário não autenticado.');
+        return;
+      }
+      if (!lojaId) {
+        Alert.alert('Erro', 'Loja não foi fornecida.');
+        return;
+      }
+      if (!selectedCustomer || !amount || !installments) {
+        Alert.alert('Erro', 'Todos os campos são obrigatórios.');
+        return;
+      }
+
+      const total = parseFloat(amount);
+      const numParcelas = parseInt(installments, 10);
+      if (isNaN(total) || isNaN(numParcelas) || numParcelas <= 0) {
+        Alert.alert('Erro', 'Valores inválidos para valor ou parcelas.');
+        return;
+      }
+
+      // Gera o array de parcelas
+      const newParcels = Array.from({ length: numParcelas }, (_, index) => {
+        const idParcela = index + 1;
+        // Data de vencimento (mês seguinte a cada parcela)
+        const dueDateObj = new Date(
           purchaseDate.getFullYear(),
           purchaseDate.getMonth() + index,
           purchaseDate.getDate()
-        ).toISOString(),
-        amount: parseFloat(amount) / parseInt(installments),
-        paid: false,
-      })),
-    };
+        );
+        return {
+          id: idParcela,
+          dueDate: dueDateObj.toISOString(),
+          amount: total / numParcelas, // <--- Cada parcela terá esse 'amount'
+          paid: false,
+          paymentDate: null,
+        };
+      });
 
-    try {
-      const savedCrediarios = await AsyncStorage.getItem('crediarioData');
-      const parsedCrediarios = savedCrediarios ? JSON.parse(savedCrediarios) : [];
-      parsedCrediarios.push(newCrediario);
-      await AsyncStorage.setItem('crediarioData', JSON.stringify(parsedCrediarios));
-      Alert.alert('Sucesso', 'Crediário adicionado com sucesso.');
+      // Monta objeto do crediário
+      const newCrediario = {
+        id: Date.now().toString(),
+        customer: selectedCustomer,   // nome do cliente
+        amount: total,               // valor total
+        installments: numParcelas,   // nº de parcelas
+        purchaseDate: purchaseDate.toISOString(),
+        parcels: newParcels,
+        closed: false,
+        closedDate: null,
+        description: `Crediário do cliente ${selectedCustomer}`,
+      };
+
+      // Salva no Firebase
+      const db = getDatabase();
+      const crediariosRef = ref(db, `users/${user.uid}/lojas/${lojaId}/crediarios`);
+      const newRef = push(crediariosRef);
+      await update(newRef, newCrediario);
+
+      Alert.alert('Sucesso', 'Crediário adicionado com sucesso!');
       navigation.goBack();
     } catch (error) {
       Alert.alert('Erro', 'Ocorreu um erro ao salvar o crediário.');
+      console.error(error);
     }
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Adicionar Crediário</Text>
-      <Picker
-        selectedValue={selectedCustomer}
-        onValueChange={(itemValue) => setSelectedCustomer(itemValue)}
-        style={styles.picker}
-      >
-        <Picker.Item label="Selecione um cliente" value={null} />
-        {customers.map((customer) => (
-          <Picker.Item key={customer.name} label={customer.name} value={customer.name} />
-        ))}
-      </Picker>
 
+      <Text style={styles.label}>Cliente:</Text>
+      <View style={styles.pickerContainer}>
+        <Picker
+          selectedValue={selectedCustomer}
+          onValueChange={(itemValue) => setSelectedCustomer(itemValue)}
+          style={styles.picker}
+        >
+          <Picker.Item label="Selecione um cliente" value={null} />
+          {customers.map((customer) => (
+            <Picker.Item
+              key={customer.id}
+              label={customer.name}
+              value={customer.name}
+            />
+          ))}
+        </Picker>
+      </View>
+
+      <Text style={styles.label}>Valor Total:</Text>
       <TextInput
         style={styles.input}
         placeholder="Valor Total"
@@ -91,6 +163,8 @@ export default function AddCrediarioScreen({ navigation }) {
         value={amount}
         onChangeText={setAmount}
       />
+
+      <Text style={styles.label}>Parcelas:</Text>
       <TextInput
         style={styles.input}
         placeholder="Quantidade de Parcelas"
@@ -98,7 +172,12 @@ export default function AddCrediarioScreen({ navigation }) {
         value={installments}
         onChangeText={setInstallments}
       />
-      <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.datePicker}>
+
+      <Text style={styles.label}>Data da Compra:</Text>
+      <TouchableOpacity
+        style={styles.datePicker}
+        onPress={() => setShowDatePicker(true)}
+      >
         <Text style={styles.datePickerText}>
           {purchaseDate ? purchaseDate.toDateString() : 'Selecionar Data'}
         </Text>
@@ -114,6 +193,7 @@ export default function AddCrediarioScreen({ navigation }) {
           }}
         />
       )}
+
       <TouchableOpacity style={styles.button} onPress={handleAddCrediario}>
         <Text style={styles.buttonText}>Salvar Crediário</Text>
       </TouchableOpacity>
@@ -121,6 +201,7 @@ export default function AddCrediarioScreen({ navigation }) {
   );
 }
 
+// Estilos
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -134,12 +215,22 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: '#2d3142',
   },
-  picker: {
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2D3142',
+    marginTop: 10,
+  },
+  pickerContainer: {
     borderWidth: 1,
     borderColor: '#BDBDBD',
     borderRadius: 8,
     backgroundColor: '#ffffff',
     marginBottom: 15,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 50,
   },
   input: {
     borderWidth: 1,

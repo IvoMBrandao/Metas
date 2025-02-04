@@ -1,5 +1,3 @@
-// AddSaleScreen.jsx
-
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -15,21 +13,22 @@ import {
   ScrollView,
 } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Checkbox from 'expo-checkbox';
+import { getDatabase, ref, get, push, update } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
 
-// Configuração do calendário para português do Brasil
+// ======= Configurações do calendário em PT-BR =======
 LocaleConfig.locales['pt-BR'] = {
   monthNames: [
     'Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-    'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro',
+    'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'
   ],
   monthNamesShort: [
     'Jan','Fev','Mar','Abr','Mai','Jun',
-    'Jul','Ago','Set','Out','Nov','Dez',
+    'Jul','Ago','Set','Out','Nov','Dez'
   ],
   dayNames: [
-    'Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado',
+    'Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'
   ],
   dayNamesShort: ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'],
   today: 'Hoje',
@@ -37,32 +36,64 @@ LocaleConfig.locales['pt-BR'] = {
 LocaleConfig.defaultLocale = 'pt-BR';
 
 const AddSaleScreen = ({ route, navigation }) => {
-  const { metaId } = route.params;
-  
-  // Estados principais
+  // Recebe metaId e lojaId via route
+  const { metaId, lojaId } = route.params || {};
+  const { user } = useAuthContext();
+
+  // Verificações iniciais
+  if (!user?.uid) {
+    return (
+      <View style={styles.centerMessage}>
+        <Text style={styles.errorText}>Usuário não autenticado.</Text>
+      </View>
+    );
+  }
+  if (!lojaId) {
+    return (
+      <View style={styles.centerMessage}>
+        <Text style={styles.errorText}>
+          Erro: lojaId não foi fornecido. Verifique a navegação.
+        </Text>
+      </View>
+    );
+  }
+  if (!metaId) {
+    return (
+      <View style={styles.centerMessage}>
+        <Text style={styles.errorText}>
+          Erro: metaId não foi fornecido. Verifique a navegação.
+        </Text>
+      </View>
+    );
+  }
+
+  // Estados da tela
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [isProductModalVisible, setProductModalVisible] = useState(false);
   const [allProducts, setAllProducts] = useState([]);
   const [searchTermProduct, setSearchTermProduct] = useState('');
   const [saleValue, setSaleValue] = useState(0);
-  const [discount, setDiscount] = useState(''); // Valor do desconto
+  const [discount, setDiscount] = useState('');
   const [discountType, setDiscountType] = useState('fixed'); // 'fixed' ou 'percentage'
   const [description, setDescription] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('dinheiro');
+
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState('');
+
   const [installments, setInstallments] = useState('');
   const [installmentValue, setInstallmentValue] = useState('');
   const [isCustomerModalVisible, setCustomerModalVisible] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDebit, setIsDebit] = useState(false);
-  
-  // Estados para o modal de quantidade de produto
+
+  // Modal de quantidade
   const [isQuantityModalVisible, setIsQuantityModalVisible] = useState(false);
-  const [tempQuantity, setTempQuantity] = useState('');
+  const [tempQuantity, setTempQuantity] = useState('1');
   const [productSelectedTemp, setProductSelectedTemp] = useState(null);
 
+  // Ao entrar na tela ou ganhar foco, carrega dados
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
       loadCustomers();
@@ -71,74 +102,110 @@ const AddSaleScreen = ({ route, navigation }) => {
     return unsubscribe;
   }, [navigation]);
 
+  // Ou ao montar, se preferir
   useEffect(() => {
     loadCustomers();
     loadAllProducts();
   }, []);
 
-  // Função para carregar clientes do AsyncStorage
+  /**
+   * Carrega lista de clientes do Firebase:
+   * /users/{uid}/lojas/{lojaId}/clientes
+   */
   const loadCustomers = async () => {
     try {
-      const savedCustomers = await AsyncStorage.getItem('customersData');
-      const parsedCustomers = savedCustomers ? JSON.parse(savedCustomers) : [];
-      setCustomers(parsedCustomers);
+      const db = getDatabase();
+      const customersRef = ref(db, `users/${user.uid}/lojas/${lojaId}/clientes`);
+      const snapshot = await get(customersRef);
+
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const parsedCustomers = Object.keys(data).map((key) => ({
+          id: key,
+          ...data[key],
+        }));
+        setCustomers(parsedCustomers);
+      } else {
+        setCustomers([]);
+      }
     } catch (error) {
-      Alert.alert('Erro', 'Ocorreu um erro ao carregar os clientes.');
+      Alert.alert('Erro', 'Não foi possível carregar os clientes.');
       console.error('Erro ao carregar clientes:', error);
     }
   };
 
-  // Função para carregar produtos do estoque do AsyncStorage
+  /**
+   * Carrega produtos do Firebase:
+   * /users/{uid}/lojas/{lojaId}/estoque/produtos
+   */
   const loadAllProducts = async () => {
     try {
-      const data = await AsyncStorage.getItem('estoqueData');
-      const parsed = data ? JSON.parse(data) : [];
-      setAllProducts(parsed);
+      const db = getDatabase();
+      const produtosRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos`);
+      const snapshot = await get(produtosRef);
+
+      if (snapshot.exists()) {
+        const dataVal = snapshot.val() || {};
+        const arr = Object.keys(dataVal).map((key) => ({
+          id: key,
+          ...dataVal[key],
+        }));
+        setAllProducts(arr);
+      } else {
+        setAllProducts([]);
+      }
     } catch (error) {
-      Alert.alert('Erro', 'Não foi possível carregar os produtos do estoque.');
+      Alert.alert('Erro', 'Não foi possível carregar os produtos do estoque (Firebase).');
       console.error(error);
     }
   };
 
-  // Função para selecionar data no calendário
+  /**
+   * Seleciona data no Calendário
+   */
   const handleDateSelect = (day) => {
     setSelectedDate(day.dateString);
   };
 
-  // Função para calcular o valor da parcela
+  /**
+   * Calcula parcelamento
+   */
   const calculateInstallment = () => {
     if (saleValue && installments) {
-      const value = (parseFloat(saleValue) / parseInt(installments)).toFixed(2);
+      const value = (parseFloat(saleValue) / parseInt(installments, 10)).toFixed(2);
       setInstallmentValue(value);
     } else {
       setInstallmentValue('');
     }
   };
-
   useEffect(() => {
     calculateInstallment();
   }, [saleValue, installments]);
 
-  // Filtra clientes com base no termo de busca
+  // Filtra clientes
   const filteredCustomers = customers.filter((customer) =>
-    customer.name.toLowerCase().includes(searchTerm.toLowerCase())
+    (customer.name || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Filtra produtos com base no termo de busca
+  // Filtra produtos
   const filteredProducts = allProducts.filter(
     (prod) =>
-      prod.nome.toLowerCase().includes(searchTermProduct.toLowerCase()) ||
-      prod.codigo.toLowerCase().includes(searchTermProduct.toLowerCase())
+      (prod.nome || '').toLowerCase().includes(searchTermProduct.toLowerCase()) ||
+      (prod.codigo || '').toLowerCase().includes(searchTermProduct.toLowerCase())
   );
 
-  // Função para selecionar um produto e abrir o modal de quantidade
+  /**
+   * Modal de selecionar produto -> define productSelectedTemp e abre modal de quantidade
+   */
   const handleSelectProduct = (prod) => {
     setProductSelectedTemp(prod);
     setTempQuantity('1');
     setIsQuantityModalVisible(true);
   };
 
-  // Função para confirmar a adição do produto com a quantidade
+  /**
+   * Confirma quantidade digitada e chama proceedToAddProduct
+   */
   const confirmAddProduct = async () => {
     const quantityNum = parseFloat(tempQuantity || '1');
     if (isNaN(quantityNum) || quantityNum <= 0) {
@@ -146,15 +213,16 @@ const AddSaleScreen = ({ route, navigation }) => {
       return;
     }
 
-    // Verificar o estoque atual do produto
+    // Verifica estoque
     const currentProduct = allProducts.find((p) => p.id === productSelectedTemp.id);
-    const currentStock = currentProduct ? currentProduct.quantidade : 0;
+    const currentStock = currentProduct?.quantidade || 0;
 
     if (currentStock < quantityNum) {
-      // Exibir alerta de estoque insuficiente ou zerado
       Alert.alert(
         'Estoque Insuficiente',
-        `O produto "${productSelectedTemp.nome}" está com estoque ${currentStock === 0 ? 'zerado' : `insuficiente (Estoque: ${currentStock})`}. Continuar adicionando resultará em estoque negativo, o que pode gerar erros nos relatórios.`,
+        `O produto "${productSelectedTemp.nome}" está com estoque ${
+          currentStock === 0 ? 'zerado' : `insuficiente (Estoque: ${currentStock})`
+        }.`,
         [
           { text: 'Cancelar', style: 'cancel' },
           { text: 'Continuar', onPress: () => proceedToAddProduct(quantityNum) },
@@ -162,59 +230,63 @@ const AddSaleScreen = ({ route, navigation }) => {
         { cancelable: false }
       );
     } else {
-      // Estoque suficiente, proceder normalmente
       proceedToAddProduct(quantityNum);
     }
   };
 
-  // Função para adicionar o produto após confirmação
+  /**
+   * Adiciona o produto à lista selectedProducts
+   */
   const proceedToAddProduct = (quantityNum) => {
-    // Obtém a última entrada para pegar o valorVenda atual
-    const ultimaEntrada = productSelectedTemp.entradas && productSelectedTemp.entradas.length > 0
-      ? productSelectedTemp.entradas[productSelectedTemp.entradas.length - 1]
-      : null;
-
-    const precoUnit = ultimaEntrada && ultimaEntrada.valorVenda
-      ? parseFloat(ultimaEntrada.valorVenda)
-      : 0;
+    // Pega a última entrada (para valorVenda)
+    const entradas = productSelectedTemp.entradas || [];
+    const ultimaEntrada = entradas.length > 0 ? entradas[entradas.length - 1] : null;
+    const precoUnit = ultimaEntrada?.valorVenda ? parseFloat(ultimaEntrada.valorVenda) : 0;
 
     const subtotal = precoUnit * quantityNum;
-
     const newItem = {
       produtoId: productSelectedTemp.id,
       nome: productSelectedTemp.nome,
-      precoUnitarioNoMomento: precoUnit, // Valor travado no momento da venda
+      precoUnitarioNoMomento: precoUnit,
       quantidade: quantityNum,
       subtotal,
     };
+
     setSelectedProducts((prev) => [...prev, newItem]);
     setIsQuantityModalVisible(false);
     setProductModalVisible(false);
   };
 
-  // Recalcula o valor total sempre que os produtos selecionados ou o desconto mudarem
+  /**
+   * Recalcula valor total (saleValue) levando em conta discount
+   */
   useEffect(() => {
     const total = selectedProducts.reduce((acc, item) => acc + item.subtotal, 0);
     let discountValue = 0;
     if (discount) {
       if (discountType === 'fixed') {
-        discountValue = parseFloat(discount);
+        discountValue = parseFloat(discount) || 0;
       } else if (discountType === 'percentage') {
-        discountValue = (total * parseFloat(discount)) / 100;
+        discountValue = (total * parseFloat(discount || '0')) / 100;
       }
     }
     const totalAfterDiscount = total - discountValue;
     setSaleValue(totalAfterDiscount >= 0 ? totalAfterDiscount : 0);
   }, [selectedProducts, discount, discountType]);
 
-  // Função para remover um produto selecionado
+  /**
+   * Remove um produto da lista selectedProducts
+   */
   const removeSelectedProduct = (index) => {
     const arr = [...selectedProducts];
     arr.splice(index, 1);
     setSelectedProducts(arr);
   };
 
-  // Função para salvar a venda
+  /**
+   * addSale: Salva a venda no Firebase e DESCONTA do estoque
+   * Se for crediário, também cria um registro em /crediarios
+   */
   const addSale = async () => {
     if (!selectedDate || selectedProducts.length === 0) {
       Alert.alert('Erro', 'Selecione uma data e adicione pelo menos 1 produto.');
@@ -225,7 +297,6 @@ const AddSaleScreen = ({ route, navigation }) => {
       return;
     }
 
-    // Validação do desconto
     const totalProducts = selectedProducts.reduce((acc, item) => acc + item.subtotal, 0);
     let discountValue = 0;
     if (discount) {
@@ -241,26 +312,19 @@ const AddSaleScreen = ({ route, navigation }) => {
     }
 
     try {
+      // Converte data "YYYY-MM-DD" -> finalDate
       const saleDateObj = new Date(selectedDate + 'T00:00:00');
       saleDateObj.setHours(12, 0, 0, 0);
       const finalDate = saleDateObj.toISOString().split('T')[0];
 
-      const savedData = await AsyncStorage.getItem('financeData');
-      const parsedData = savedData ? JSON.parse(savedData) : [];
-      const metaIndex = parsedData.findIndex((item) => item.id === metaId);
-
-      if (metaIndex === -1) {
-        Alert.alert('Erro', 'Meta não encontrada.');
-        return;
-      }
-
+      // Monta parcelas (somente se crediário ou cartao parcelado)
       let parcels = [];
       if (paymentMethod === 'crediario' || (paymentMethod === 'cartao' && !isDebit)) {
-        const parcelValue = parseFloat(saleValue) / parseInt(installments);
+        const parcelValue = parseFloat(saleValue) / parseInt(installments || '1', 10);
         const initialDate = new Date(selectedDate);
         initialDate.setMonth(initialDate.getMonth() + 1);
 
-        for (let i = 0; i < parseInt(installments); i++) {
+        for (let i = 0; i < parseInt(installments || '1', 10); i++) {
           const parcelDate = new Date(initialDate);
           parcelDate.setMonth(initialDate.getMonth() + i);
           parcels.push({
@@ -272,8 +336,8 @@ const AddSaleScreen = ({ route, navigation }) => {
         }
       }
 
+      // Monta objeto da venda
       const newSale = {
-        id: Date.now().toString(),
         date: finalDate,
         value: parseFloat(saleValue),
         description,
@@ -281,11 +345,14 @@ const AddSaleScreen = ({ route, navigation }) => {
           ? 'cartao-debito'
           : paymentMethod === 'cartao' && installments === '1'
           ? 'cartao-credito-a-vista'
-          : paymentMethod === 'cartao' && parseInt(installments) > 1
+          : paymentMethod === 'cartao' && parseInt(installments, 10) > 1
           ? 'cartao-credito-parcelado'
           : paymentMethod,
         customer: selectedCustomer || null,
-        installments: paymentMethod === 'crediario' ? parseInt(installments) : null,
+        installments:
+          paymentMethod === 'crediario' || (paymentMethod === 'cartao' && !isDebit)
+            ? parseInt(installments || '0', 10)
+            : null,
         parcels: paymentMethod === 'crediario' ? parcels : [],
         products: selectedProducts.map((p) => ({
           produtoId: p.produtoId,
@@ -300,30 +367,50 @@ const AddSaleScreen = ({ route, navigation }) => {
         },
       };
 
-      parsedData[metaIndex].sales = parsedData[metaIndex].sales || [];
-      parsedData[metaIndex].sales.push(newSale);
+      const db = getDatabase();
 
-      // Atualizar o estoque
-      const savedStock = await AsyncStorage.getItem('estoqueData');
-      const parsedStock = savedStock ? JSON.parse(savedStock) : [];
+      // 1) Salva a venda no DB em metas
+      const vendasRef = ref(db, `users/${user.uid}/lojas/${lojaId}/metas/${metaId}/vendas`);
+      const newSaleRef = push(vendasRef);
+      await update(newSaleRef, newSale);
 
-      const updatedStock = parsedStock.map((prod) => {
-        const soldItem = selectedProducts.find((item) => item.produtoId === prod.id);
-        if (soldItem) {
-          return {
-            ...prod,
-            quantidade: prod.quantidade - soldItem.quantidade,
-          };
+      // 2) DESCONTA do estoque
+      for (let item of selectedProducts) {
+        const produtoRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos/${item.produtoId}`);
+        const snap = await get(produtoRef);
+        if (snap.exists()) {
+          const produtoData = snap.val();
+          const estoqueAtual = produtoData.quantidade || 0;
+          let novoEstoque = estoqueAtual - item.quantidade;
+          if (novoEstoque < 0) novoEstoque = 0;
+          await update(produtoRef, { quantidade: novoEstoque });
         }
-        return prod;
-      });
+      }
 
-      await AsyncStorage.setItem('financeData', JSON.stringify(parsedData));
-      await AsyncStorage.setItem('estoqueData', JSON.stringify(updatedStock));
+      // 3) Se for crediário => também salva em /crediarios (registro "aberto")
+      if (paymentMethod === 'crediario') {
+        const crediariosRef = ref(db, `users/${user.uid}/lojas/${lojaId}/crediarios`);
+        const newCrediarioRef = push(crediariosRef);
+
+        // Monta objeto simplificado do crediário
+        const newCrediarioData = {
+          id: newCrediarioRef.key, // ou Date.now()
+          customer: selectedCustomer,
+          description: description || '',
+          amount: parseFloat(saleValue),
+          installments: parseInt(installments || '1', 10),
+          purchaseDate: finalDate,
+          closed: false,
+          closedDate: null,
+          parcels,
+        };
+
+        await update(newCrediarioRef, newCrediarioData);
+      }
 
       Alert.alert('Sucesso', 'Venda adicionada com sucesso!');
 
-      // Reset dos campos
+      // Reseta campos
       setSelectedProducts([]);
       setSaleValue(0);
       setDiscount('');
@@ -332,22 +419,25 @@ const AddSaleScreen = ({ route, navigation }) => {
       setInstallments('');
       setDescription('');
       setIsDebit(false);
+
     } catch (error) {
-      console.error('Erro ao adicionar venda', error);
+      console.error('Erro ao adicionar venda no Firebase:', error);
       Alert.alert('Erro', 'Ocorreu um erro ao adicionar a venda.');
     }
   };
 
-  // Função para navegar para os detalhes das vendas
+  /**
+   * Navega para detalhes de vendas do dia
+   */
   const goToSalesDetail = () => {
     if (!selectedDate) {
       Alert.alert('Erro', 'Por favor, selecione uma data.');
       return;
     }
-    navigation.navigate('SalesDetailScreen', { metaId, date: selectedDate });
+    navigation.navigate('SalesDetailScreen', { metaId, date: selectedDate, lojaId });
   };
 
-  // Função para renderizar cada item de cliente na FlatList
+  // Renderiza cliente no modal
   const renderCustomerItem = ({ item }) => (
     <TouchableOpacity
       style={[
@@ -363,16 +453,12 @@ const AddSaleScreen = ({ route, navigation }) => {
     </TouchableOpacity>
   );
 
-  // Função para renderizar cada item de produto na FlatList
+  // Renderiza produto no modal
   const renderProductItem = ({ item }) => {
-    // Verifica se existem entradas e obtém a última entrada
-    const ultimaEntrada = item.entradas && item.entradas.length > 0
-      ? item.entradas[item.entradas.length - 1]
-      : null;
-
-    // Obtém o valorVenda da última entrada ou define como '0.00' se não existir
+    const entradas = item.entradas || [];
+    const ultimaEntrada = entradas[entradas.length - 1] || null;
     const valorVenda = ultimaEntrada && ultimaEntrada.valorVenda
-      ? ultimaEntrada.valorVenda.toFixed(2)
+      ? parseFloat(ultimaEntrada.valorVenda).toFixed(2)
       : '0.00';
 
     return (
@@ -393,13 +479,10 @@ const AddSaleScreen = ({ route, navigation }) => {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/*
-        ScrollView principal com nestedScrollEnabled para permitir rolagem
-      */}
       <ScrollView contentContainerStyle={styles.scrollContainer} nestedScrollEnabled>
         <Text style={styles.title}>Adicionar Venda</Text>
 
-        {/* Calendário para selecionar a data da venda */}
+        {/* Calendário */}
         <Calendar
           onDayPress={handleDateSelect}
           markedDates={{
@@ -449,7 +532,7 @@ const AddSaleScreen = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Campo para selecionar o desconto */}
+        {/* Desconto */}
         <Text style={styles.label2}>Desconto:</Text>
         <View style={styles.discountContainer}>
           <TouchableOpacity
@@ -496,7 +579,7 @@ const AddSaleScreen = ({ route, navigation }) => {
           placeholderTextColor="#BDBDBD"
         />
 
-        {/* Valor Total da Venda e Parcelas */}
+        {/* Valor total e parcelas */}
         <Text style={[styles.label2, { marginTop: 20 }]}>Valor Total:</Text>
         <View style={styles.totalAndInstallmentsContainer}>
           <TextInput
@@ -504,11 +587,7 @@ const AddSaleScreen = ({ route, navigation }) => {
             editable={false}
             value={`R$ ${saleValue.toFixed(2)}`}
           />
-          {/* 
-            Atualização: Adiciona condição para desabilitar parcelas quando isDebit é verdadeiro 
-            Apenas para 'cartao', 'crediario' continua permitindo parcelas
-          */}
-          {(paymentMethod === 'cartao' && !isDebit) || paymentMethod === 'crediario' ? (
+          {((paymentMethod === 'cartao' && !isDebit) || paymentMethod === 'crediario') && (
             <View style={styles.installmentsContainer}>
               <Text style={styles.installmentsLabel}>x</Text>
               <TextInput
@@ -518,20 +597,18 @@ const AddSaleScreen = ({ route, navigation }) => {
                 keyboardType="numeric"
                 onChangeText={setInstallments}
                 placeholderTextColor="#BDBDBD"
-                editable={!isDebit} // Desabilita quando isDebit é verdadeiro
-                // Opicional: Ajusta a opacidade para indicar desabilitado
-                // style={[styles.installmentsInput, isDebit && { backgroundColor: '#E0E0E0' }]}
+                editable={!isDebit}
               />
               {installments && installmentValue ? (
                 <Text style={styles.installmentInfo}>
-                 {installments} x R$ {installmentValue}
+                  {installments} x R$ {installmentValue}
                 </Text>
               ) : null}
             </View>
-          ) : null}
+          )}
         </View>
 
-        {/* Campo para descrição da venda */}
+        {/* Descrição */}
         <TextInput
           style={styles.input}
           placeholder="Descrição"
@@ -540,7 +617,7 @@ const AddSaleScreen = ({ route, navigation }) => {
           placeholderTextColor="#BDBDBD"
         />
 
-        {/* Seleção de cliente */}
+        {/* Cliente */}
         <Text style={styles.label}>Cliente:</Text>
         <TouchableOpacity
           style={[styles.input, styles.customerSelector]}
@@ -551,7 +628,7 @@ const AddSaleScreen = ({ route, navigation }) => {
           </Text>
         </TouchableOpacity>
 
-        {/* Seleção de forma de pagamento */}
+        {/* Forma de pagamento */}
         <Text style={styles.label}>Forma de Pagamento:</Text>
         <View style={styles.optionsContainer}>
           {['dinheiro', 'pix', 'crediario', 'cartao'].map((method) => (
@@ -563,10 +640,7 @@ const AddSaleScreen = ({ route, navigation }) => {
               ]}
               onPress={() => {
                 setPaymentMethod(method);
-                // Se a forma de pagamento mudar para algo que não seja 'cartao', desmarca 'isDebit'
-                if (method !== 'cartao') {
-                  setIsDebit(false);
-                }
+                if (method !== 'cartao') setIsDebit(false);
               }}
             >
               <Text
@@ -580,11 +654,6 @@ const AddSaleScreen = ({ route, navigation }) => {
             </TouchableOpacity>
           ))}
         </View>
-
-        {/* 
-          Atualização: Checkbox para débito só aparece quando a forma de pagamento é 'cartao'
-          e controla a desativação de parcelas
-        */}
         {paymentMethod === 'cartao' && (
           <View style={styles.raw}>
             <View style={styles.checkboxContainer}>
@@ -593,7 +662,7 @@ const AddSaleScreen = ({ route, navigation }) => {
                   value={isDebit}
                   onValueChange={(checked) => {
                     setIsDebit(checked);
-                    if (checked) setInstallments(''); // Reseta parcelas quando Débito é marcado
+                    if (checked) setInstallments('');
                   }}
                 />
                 <Text style={styles.checkboxLabel}>Débito</Text>
@@ -602,7 +671,7 @@ const AddSaleScreen = ({ route, navigation }) => {
           </View>
         )}
 
-        {/* Botões para adicionar venda e ver vendas do dia */}
+        {/* Botões principais */}
         <TouchableOpacity style={styles.button} onPress={addSale}>
           <Text style={styles.buttonText}>Adicionar Venda</Text>
         </TouchableOpacity>
@@ -614,7 +683,7 @@ const AddSaleScreen = ({ route, navigation }) => {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Modal para seleção de cliente */}
+      {/* =============== MODAL DE CLIENTES =============== */}
       <Modal visible={isCustomerModalVisible} animationType="slide">
         <View style={styles.modalContainer}>
           <TextInput
@@ -624,10 +693,9 @@ const AddSaleScreen = ({ route, navigation }) => {
             onChangeText={setSearchTerm}
             placeholderTextColor="#BDBDBD"
           />
-          {/* FlatList de clientes com nestedScrollEnabled */}
           <FlatList
             data={filteredCustomers}
-            keyExtractor={(item, index) => index.toString()}
+            keyExtractor={(_item, index) => String(index)}
             renderItem={renderCustomerItem}
             nestedScrollEnabled
           />
@@ -638,12 +706,11 @@ const AddSaleScreen = ({ route, navigation }) => {
             <Text style={styles.modalCloseButtonText}>Fechar</Text>
           </TouchableOpacity>
 
-          {/* Botão flutuante para adicionar cliente */}
           <TouchableOpacity
             style={styles.floatingAddButton}
             onPress={() => {
               setCustomerModalVisible(false);
-              navigation.navigate('AddCustomers');
+              navigation.navigate('AddCustomers', { lojaId }); // Passe a loja
             }}
           >
             <Text style={styles.floatingAddButtonText}>+</Text>
@@ -651,7 +718,7 @@ const AddSaleScreen = ({ route, navigation }) => {
         </View>
       </Modal>
 
-      {/* Modal para seleção de produtos */}
+      {/* =============== MODAL DE PRODUTOS =============== */}
       <Modal visible={isProductModalVisible} animationType="slide">
         <View style={styles.modalContainer}>
           <Text style={styles.title}>Adicionar Produto</Text>
@@ -662,12 +729,14 @@ const AddSaleScreen = ({ route, navigation }) => {
             onChangeText={setSearchTermProduct}
             placeholderTextColor="#BDBDBD"
           />
-          {/* FlatList de produtos com nestedScrollEnabled */}
           <FlatList
             data={filteredProducts}
-            keyExtractor={(item) => item.id.toString()}
+            keyExtractor={(item) => String(item.id)}
             renderItem={renderProductItem}
             nestedScrollEnabled
+            ListEmptyComponent={
+              <Text style={styles.emptyMsg}>Nenhum produto encontrado.</Text>
+            }
           />
           <TouchableOpacity
             style={styles.modalCloseButton}
@@ -678,7 +747,7 @@ const AddSaleScreen = ({ route, navigation }) => {
         </View>
       </Modal>
 
-      {/* Modal para inserir a quantidade do produto selecionado */}
+      {/* =============== MODAL QUANTIDADE =============== */}
       <Modal visible={isQuantityModalVisible} animationType="fade" transparent>
         <View style={styles.quantityModalOverlay}>
           <View style={styles.quantityModalContainer}>
@@ -714,7 +783,19 @@ const AddSaleScreen = ({ route, navigation }) => {
 
 export default AddSaleScreen;
 
+// ==================== ESTILOS ====================
 const styles = StyleSheet.create({
+  centerMessage: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: 'red',
+    textAlign: 'center',
+    marginHorizontal: 20,
+  },
   container: {
     flex: 1,
     backgroundColor: '#F7F9FC',
@@ -752,23 +833,6 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  inputSmall: {
-    width: 60,
-    borderWidth: 1,
-    borderColor: '#BDBDBD',
-    borderRadius: 8,
-    padding: 10,
-    marginVertical: 10,
-    backgroundColor: '#ffffff',
-    fontSize: 16,
-    color: '#2D3142',
-  },
-  textInline: {
-    marginLeft: 8,
-    fontSize: 16,
-    color: '#2D3142',
-    alignSelf: 'center',
   },
   label: {
     fontSize: 16,
@@ -827,7 +891,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
-  // Modal Container
   modalContainer: {
     flex: 1,
     padding: 20,
@@ -871,7 +934,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
   },
-  // Checkbox Container
   raw: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -892,7 +954,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#2D3142',
   },
-  // Lista de clientes
   customerItem: {
     padding: 15,
     backgroundColor: '#F7F9FC',
@@ -906,7 +967,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#2D3142',
   },
-  // Lista de produtos no modal
   productListItem: {
     padding: 12,
     borderBottomWidth: 1,
@@ -923,20 +983,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#777',
   },
-  // Produtos selecionados
   productsBox: {
     backgroundColor: '#FFF',
     borderRadius: 8,
     padding: 10,
-    // sombra leve
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 3,
     elevation: 1,
-  },
-  flatlistFix: {
-    maxHeight: 150,
   },
   emptyMsg: {
     textAlign: 'center',
@@ -959,7 +1014,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#666',
   },
-  // Modal de quantidade
   quantityModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -994,7 +1048,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  // Container para os tipos de desconto
   discountContainer: {
     flexDirection: 'row',
     marginBottom: 10,
@@ -1019,7 +1072,6 @@ const styles = StyleSheet.create({
   selectedDiscountTypeText: {
     color: '#ffffff',
   },
-  // Novo contêiner para Valor Total e Parcelas
   totalAndInstallmentsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',

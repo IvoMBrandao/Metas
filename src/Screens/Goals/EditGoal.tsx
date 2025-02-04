@@ -12,24 +12,43 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const EditMetaScreen = ({ route, navigation }) => {
-  const { item, index } = route.params;
+  /**
+   * Agora capturamos também "lojaId" se ele vier
+   * de onde chamamos: navigation.navigate('EditMetaScreen', { item, index, lojaId })
+   */
+  const { item, index, lojaId } = route.params || {};
+
   const [name, setName] = useState(item.name);
   const [value, setValue] = useState(item.value);
-  const [days, setDays] = useState(item.salesDays); // Corrigido para `salesDays`
+  const [days, setDays] = useState(item.salesDays);
 
   useEffect(() => {
     setName(item.name);
     setValue(item.value);
-    setDays(item.salesDays); // Corrigido para `salesDays`
+    setDays(item.salesDays);
   }, [item]);
 
   const saveChanges = async () => {
     try {
       const savedData = await AsyncStorage.getItem('financeData');
       const parsedData = savedData ? JSON.parse(savedData) : [];
-      parsedData[index] = { ...parsedData[index], name, value, salesDays: days }; // Corrigido para `salesDays`
+
+      // Atualiza o item no array
+      parsedData[index] = {
+        ...parsedData[index],
+        name,
+        value,
+        salesDays: days
+      };
+
+      // Salva de volta no AsyncStorage
       await AsyncStorage.setItem('financeData', JSON.stringify(parsedData));
-      navigation.navigate('Goal'); // Voltar para a tela "Meta"
+
+      // Se a tela "Goal" precisa do "lojaId", repassamos:
+      navigation.navigate('Goal', { lojaId });
+
+      // Se a tela "Goal" NÃO precisa de "lojaId", use apenas:
+      // navigation.navigate('Goal');
     } catch (error) {
       console.log('Erro ao salvar alterações', error);
     }
@@ -50,6 +69,7 @@ const EditMetaScreen = ({ route, navigation }) => {
           onChangeText={setName}
           placeholderTextColor="#BDBDBD"
         />
+
         <TextInput
           style={styles.input}
           placeholder="Valor"
@@ -58,6 +78,7 @@ const EditMetaScreen = ({ route, navigation }) => {
           onChangeText={setValue}
           placeholderTextColor="#BDBDBD"
         />
+
         <TextInput
           style={styles.input}
           placeholder="Dias de Venda"
@@ -74,6 +95,8 @@ const EditMetaScreen = ({ route, navigation }) => {
     </KeyboardAvoidingView>
   );
 };
+
+export default EditMetaScreen;
 
 const styles = StyleSheet.create({
   container: {
@@ -113,5 +136,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
-export default EditMetaScreen;

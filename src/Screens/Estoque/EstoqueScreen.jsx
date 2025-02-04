@@ -8,25 +8,41 @@ import {
   Alert,
   TextInput,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
 import { AntDesign, Feather } from '@expo/vector-icons';
+import { getDatabase, ref, get, set } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
 
- const EstoqueScreen = ({ navigation }) => {
+const EstoqueScreen = ({ navigation, route }) => {
+  const { lojaId } = route.params || {};
+  const { user } = useAuthContext();
+
+  // 1) Se user ou lojaId for inválido, sai antes de qualquer lógica
+  const userInvalido = !user || !user.uid;
+  const lojaIdInvalido = !lojaId || typeof lojaId !== 'string' || lojaId.trim() === '';
+
+  if (userInvalido || lojaIdInvalido) {
+    // Renderiza apenas uma mensagem de erro e sai
+    return (
+      <View style={styles.containerCenter}>
+        <Text style={styles.errorText}>
+          Erro: Usuário não autenticado ou ID da loja não especificado.
+        </Text>
+      </View>
+    );
+  }
+
   const [produtos, setProdutos] = useState([]);
   const [filteredProdutos, setFilteredProdutos] = useState([]);
 
-  // Estados do filtro
-  const [filterType, setFilterType] = useState('nome'); // "nome", "codigo", "categoria"
+  const [filterType, setFilterType] = useState('nome');
   const [filterValue, setFilterValue] = useState('');
   const [categoriaSelecionada, setCategoriaSelecionada] = useState('');
   const [subCategoriaSelecionada, setSubCategoriaSelecionada] = useState([]);
 
-  // Lista de categorias e subcategorias
   const [categorias, setCategorias] = useState([]);
   const [subCategoriasDaCategoria, setSubCategoriasDaCategoria] = useState([]);
 
-  // Flags de visibilidade das listas
   const [isCategoriaListVisible, setIsCategoriaListVisible] = useState(false);
   const [isSubCategoriaListVisible, setIsSubCategoriaListVisible] = useState(false);
 
@@ -34,33 +50,65 @@ import { AntDesign, Feather } from '@expo/vector-icons';
 
   useEffect(() => {
     if (isFocused) {
+      verificarOuCriarEstoque();
       fetchProdutos();
       fetchCategorias();
     }
-  }, [isFocused]);
+  }, [isFocused, lojaId]);
 
-  /**
-   * Carrega os produtos do AsyncStorage
-   */
+  const verificarOuCriarEstoque = async () => {
+    try {
+      const db = getDatabase();
+      const estoqueRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque`);
+
+      const estoqueSnapshot = await get(estoqueRef);
+      if (!estoqueSnapshot.exists()) {
+        await set(estoqueRef, { produtos: {} });
+        console.log(`Estoque criado para a loja ${lojaId}`);
+      } else {
+        console.log(`Estoque já existe para a loja ${lojaId}`);
+      }
+    } catch (error) {
+      Alert.alert('Erro', 'Não foi possível verificar ou criar o estoque.');
+      console.error(error);
+    }
+  };
+
   const fetchProdutos = async () => {
     try {
-      const savedData = await AsyncStorage.getItem('estoqueData');
-      const parsedData = savedData ? JSON.parse(savedData) : [];
-      setProdutos(parsedData);
-      setFilteredProdutos(parsedData);
+      const db = getDatabase();
+      const produtosRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos`);
+      const produtosSnapshot = await get(produtosRef);
+
+      let parsedProdutos = [];
+      if (produtosSnapshot.exists()) {
+        const data = produtosSnapshot.val();
+        parsedProdutos = Object.keys(data).map((key) => ({ id: key, ...data[key] }));
+      }
+
+      setProdutos(parsedProdutos);
+      setFilteredProdutos(parsedProdutos);
     } catch (error) {
       Alert.alert('Erro', 'Ocorreu um erro ao carregar o estoque.');
       console.error('Erro ao carregar estoque:', error);
     }
   };
 
-  /**
-   * Carrega as categorias
-   */
   const fetchCategorias = async () => {
     try {
-      const savedCategorias = await AsyncStorage.getItem('categoriasData');
-      const parsedCategorias = savedCategorias ? JSON.parse(savedCategorias) : [];
+      const db = getDatabase();
+      const categoriasRef = ref(db, `users/${user.uid}/categoriasData`);
+      const categoriasSnapshot = await get(categoriasRef);
+
+      let parsedCategorias = [];
+      if (categoriasSnapshot.exists()) {
+        const data = categoriasSnapshot.val();
+        if (Array.isArray(data)) {
+          parsedCategorias = data.filter(Boolean);
+        } else {
+          parsedCategorias = Object.values(data);
+        }
+      }
       setCategorias(parsedCategorias);
     } catch (error) {
       Alert.alert('Erro', 'Ocorreu um erro ao carregar categorias.');
@@ -68,9 +116,6 @@ import { AntDesign, Feather } from '@expo/vector-icons';
     }
   };
 
-  /**
-   * Quando trocar o filterType, limpamos o filtro e resetamos a lista
-   */
   useEffect(() => {
     setFilterValue('');
     setCategoriaSelecionada('');
@@ -79,17 +124,13 @@ import { AntDesign, Feather } from '@expo/vector-icons';
     setIsCategoriaListVisible(false);
     setIsSubCategoriaListVisible(false);
 
-    setFilteredProdutos(produtos); // Volta a lista original
-  }, [filterType]);
+    setFilteredProdutos(produtos);
+  }, [filterType, produtos]);
 
-  /**
-   * Filtra a lista de produtos
-   */
   const filtrarProdutos = () => {
     let filtrados = [...produtos];
 
     if (filterType === 'nome') {
-      // Filtro por nome
       if (!filterValue.trim()) {
         setFilteredProdutos(produtos);
         return;
@@ -98,7 +139,6 @@ import { AntDesign, Feather } from '@expo/vector-icons';
         item.nome?.toLowerCase().includes(filterValue.toLowerCase())
       );
     } else if (filterType === 'codigo') {
-      // Filtro por código
       if (!filterValue.trim()) {
         setFilteredProdutos(produtos);
         return;
@@ -107,7 +147,6 @@ import { AntDesign, Feather } from '@expo/vector-icons';
         item.codigo?.toLowerCase().includes(filterValue.toLowerCase())
       );
     } else if (filterType === 'categoria') {
-      // Filtro por categoria
       if (!categoriaSelecionada) {
         setFilteredProdutos(produtos);
         return;
@@ -117,7 +156,6 @@ import { AntDesign, Feather } from '@expo/vector-icons';
           item.categoria?.toLowerCase() === categoriaSelecionada.toLowerCase()
       );
 
-      // Se também tiver subcategoria
       if (subCategoriaSelecionada) {
         filtrados = filtrados.filter(
           (item) =>
@@ -130,10 +168,8 @@ import { AntDesign, Feather } from '@expo/vector-icons';
     setFilteredProdutos(filtrados);
   };
 
-  // Sempre que algo mudar (filterValue, etc.), chamamos filtrarProdutos
   useEffect(() => {
     filtrarProdutos();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     filterValue,
     categoriaSelecionada,
@@ -142,9 +178,6 @@ import { AntDesign, Feather } from '@expo/vector-icons';
     produtos,
   ]);
 
-  /**
-   * Seleciona a categoria e carrega subcategorias
-   */
   const handleSelectCategoria = (cat) => {
     setCategoriaSelecionada(cat.nome);
     setSubCategoriaSelecionada('');
@@ -152,18 +185,14 @@ import { AntDesign, Feather } from '@expo/vector-icons';
     setIsCategoriaListVisible(false);
   };
 
-  /**
-   * Formata data "AAAA-MM-DD" -> "DD/MM/AAAA"
-   */
+  // Exemplo de formatar data "AAAA-MM-DD" -> "DD/MM/AAAA"
   const formatDateDMY = (dataISO) => {
     if (!dataISO || !dataISO.includes('-')) return dataISO || '';
-    const [ano, mes, dia] = dataISO.split('-');
+    const [ano, mes, diaRest] = dataISO.split('-');
+    const dia = diaRest.slice(0, 2);
     return `${dia}/${mes}/${ano}`;
   };
 
-  /**
-   * Pergunta se o usuário realmente quer excluir o produto
-   */
   const confirmDelete = (productId) => {
     Alert.alert(
       'Confirmar Exclusão',
@@ -179,29 +208,35 @@ import { AntDesign, Feather } from '@expo/vector-icons';
     );
   };
 
-  /**
-   * Exclui um produto do AsyncStorage
-   */
   const handleDelete = async (productId) => {
     try {
+      const db = getDatabase();
+      const produtoRef = ref(
+        db,
+        `users/${user.uid}/lojas/${lojaId}/estoque/produtos/${productId}`
+      );
+      await set(produtoRef, null);
+
       const updatedData = produtos.filter((item) => item.id !== productId);
-      await AsyncStorage.setItem('estoqueData', JSON.stringify(updatedData));
       setProdutos(updatedData);
       setFilteredProdutos(updatedData);
+
       Alert.alert('Sucesso', 'Produto excluído com sucesso.');
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível excluir o produto.');
+      console.error(error);
     }
   };
 
-  /**
-   * Renderiza cada produto na lista
-   */
   const renderProduto = ({ item }) => (
     <TouchableOpacity
       style={styles.productItem}
-      // Ao clicar em qualquer parte do card do produto, vamos à tela de detalhes
-      onPress={() => navigation.navigate('ProdutoDetalhesScreen', { productId: item.id })}
+      onPress={() =>
+        navigation.navigate('ProdutoDetalhesScreen', {
+          productId: item.id,
+          lojaId,
+        })
+      }
     >
       <View>
         <Text style={styles.productName}>{item.nome}</Text>
@@ -209,12 +244,14 @@ import { AntDesign, Feather } from '@expo/vector-icons';
         <Text style={styles.productDetails}>
           Quantidade: {item.quantidade} {item.unidade}
         </Text>
-        <Text style={styles.productDetails}>Categoria: {item.categoria}</Text>
+        <Text style={styles.productDetails}>
+          Categoria: {item.categoria}
+        </Text>
         {item.subCategoria ? (
-          <Text style={styles.productDetails}>Subcat: {item.subCategoria}</Text>
+          <Text style={styles.productDetails}>
+            Subcat: {item.subCategoria}
+          </Text>
         ) : null}
-
-        {/* Converte data no momento de exibir */}
         <Text style={styles.productDetails}>
           Entrada: {formatDateDMY(item.dataEntrada)}
         </Text>
@@ -224,7 +261,7 @@ import { AntDesign, Feather } from '@expo/vector-icons';
         <TouchableOpacity
           style={styles.iconButton}
           onPress={() =>
-            navigation.navigate('EditarProduto', { productId: item.id })
+            navigation.navigate('EditarProduto', { productId: item.id, lojaId })
           }
         >
           <Feather name="edit" size={24} color="#3A86FF" />
@@ -243,9 +280,8 @@ import { AntDesign, Feather } from '@expo/vector-icons';
     <View style={styles.container}>
       <Text style={styles.title}>Estoque</Text>
 
-      {/* Secção de filtros */}
+      {/* Filtro */}
       <View style={styles.filterContainer}>
-        {/* Botões de tipo de filtro */}
         <View style={styles.row}>
           <TouchableOpacity
             style={[
@@ -263,7 +299,6 @@ import { AntDesign, Feather } from '@expo/vector-icons';
               Nome
             </Text>
           </TouchableOpacity>
-
           <TouchableOpacity
             style={[
               styles.filterButton,
@@ -280,7 +315,6 @@ import { AntDesign, Feather } from '@expo/vector-icons';
               Código
             </Text>
           </TouchableOpacity>
-
           <TouchableOpacity
             style={[
               styles.filterButton,
@@ -291,7 +325,8 @@ import { AntDesign, Feather } from '@expo/vector-icons';
             <Text
               style={[
                 styles.filterButtonText,
-                filterType === 'categoria' && styles.filterButtonTextSelected,
+                filterType === 'categoria' &&
+                  styles.filterButtonTextSelected,
               ]}
             >
               Categoria
@@ -299,24 +334,19 @@ import { AntDesign, Feather } from '@expo/vector-icons';
           </TouchableOpacity>
         </View>
 
-        {/* Filtro por nome ou código */}
         {(filterType === 'nome' || filterType === 'codigo') && (
           <TextInput
             style={styles.searchInput}
             placeholder={
-              filterType === 'nome'
-                ? 'Buscar por Nome'
-                : 'Buscar por Código'
+              filterType === 'nome' ? 'Buscar por Nome' : 'Buscar por Código'
             }
             value={filterValue}
             onChangeText={setFilterValue}
           />
         )}
 
-        {/* Filtro por Categoria/Subcategoria */}
         {filterType === 'categoria' && (
           <View>
-            {/* Selecionar Categoria */}
             <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => {
@@ -329,15 +359,21 @@ import { AntDesign, Feather } from '@expo/vector-icons';
               </Text>
             </TouchableOpacity>
 
+            {/* Lista de categorias */}
             {isCategoriaListVisible && (
               <FlatList
                 style={styles.listaCategoria}
                 data={categorias}
-                keyExtractor={(item) => item.nome}
+                keyExtractor={(item, index) => index.toString()}
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     style={styles.dropdownItem}
-                    onPress={() => handleSelectCategoria(item)}
+                    onPress={() => {
+                      setCategoriaSelecionada(item.nome);
+                      setSubCategoriaSelecionada('');
+                      setSubCategoriasDaCategoria(item.subCategorias || []);
+                      setIsCategoriaListVisible(false);
+                    }}
                   >
                     <Text style={styles.dropdownItemText}>{item.nome}</Text>
                   </TouchableOpacity>
@@ -345,7 +381,6 @@ import { AntDesign, Feather } from '@expo/vector-icons';
               />
             )}
 
-            {/* Selecionar Subcategoria */}
             {categoriaSelecionada ? (
               <TouchableOpacity
                 style={styles.dropdownButton}
@@ -381,7 +416,7 @@ import { AntDesign, Feather } from '@expo/vector-icons';
         )}
       </View>
 
-      {/* Lista de Produtos */}
+      {/* Lista de produtos filtrados */}
       <FlatList
         data={filteredProdutos}
         keyExtractor={(item) => item.id.toString()}
@@ -391,27 +426,24 @@ import { AntDesign, Feather } from '@expo/vector-icons';
         }
       />
 
-      {/* ---------- ATALHOS PARA ENTRADA E SAÍDA ---------- */}
+      {/* Botões de Entrada e Saída */}
       <View style={styles.shortcutContainer}>
         <TouchableOpacity
           style={styles.shortcutButton}
-          // Ajuste o nome da rota de acordo com seu Navigator
-          onPress={() => navigation.navigate('EntradaScreen')}
+          onPress={() => navigation.navigate('EntradaScreen', { lojaId })}
         >
-          <Feather name="download" size={20} color="#FFF" />
+          <AntDesign name="download" size={20} color="#FFF" />
           <Text style={styles.shortcutText}>Entrada</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.shortcutButton, { backgroundColor: '#E74C3C' }]}
-          // Ajuste o nome da rota de acordo com seu Navigator
-          onPress={() => navigation.navigate('SaidaManualScreen')}
+          onPress={() => navigation.navigate('SaidaManualScreen', { lojaId })}
         >
-          <Feather name="upload" size={20} color="#FFF" />
+          <AntDesign name="upload" size={20} color="#FFF" />
           <Text style={styles.shortcutText}>Saída</Text>
         </TouchableOpacity>
       </View>
-    
     </View>
   );
 };
@@ -419,9 +451,20 @@ import { AntDesign, Feather } from '@expo/vector-icons';
 export default EstoqueScreen;
 
 const styles = StyleSheet.create({
+  containerCenter: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: 'red',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#F0F3F9', // um cinza-azulado claro
+    backgroundColor: '#F0F3F9',
     padding: 20,
   },
   title: {
@@ -435,7 +478,6 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 12,
     marginBottom: 15,
-    // Sombra leve
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
@@ -490,7 +532,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#C5CCD0',
     marginBottom: 10,
-    maxHeight: 150, // Limite de altura
+    maxHeight: 150,
   },
   dropdownItem: {
     padding: 10,
@@ -509,7 +551,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    // Sombra leve
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -539,9 +580,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#7D8797',
   },
- 
-
-  // ------ ESTILOS DOS BOTÕES DE ATALHO (ENTRADA/SAÍDA) ------
   shortcutContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',

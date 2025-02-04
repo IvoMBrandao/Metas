@@ -1,71 +1,91 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
+import { getDatabase, ref, get } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
 
-const CrediarioResumoScreen = ({ navigation }) => {
-  const [crediarioSales, setCrediarioSales] = useState([]);
+const CrediarioResumoScreen = ({ route, navigation }) => {
+  const { lojaId } = route.params || {};
+  const { user } = useAuthContext();
+
   const [totalPendente, setTotalPendente] = useState(0);
   const [comprasVencidas, setComprasVencidas] = useState([]);
   const [proximosVencimentos, setProximosVencimentos] = useState([]);
   const isFocused = useIsFocused();
 
   useEffect(() => {
-    if (isFocused) fetchCrediarioSales();
+    if (isFocused) {
+      fetchCrediarioSales();
+    }
   }, [isFocused]);
 
   const fetchCrediarioSales = async () => {
+    if (!user?.uid) return;
+    if (!lojaId) {
+      Alert.alert('Erro', 'lojaId não informado.');
+      return;
+    }
     try {
-      const savedData = await AsyncStorage.getItem('financeData');
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        const allCrediarioSales = parsedData.flatMap((meta) =>
-          meta.sales?.filter((sale) => sale.paymentMethod === 'crediario' && !sale.closed) || []
-        );
-        setCrediarioSales(allCrediarioSales);
-        calculateResumo(allCrediarioSales);
+      const db = getDatabase();
+      const credRef = ref(db, `users/${user.uid}/lojas/${lojaId}/crediarios`);
+      const snapshot = await get(credRef);
+
+      if (!snapshot.exists()) {
+        setTotalPendente(0);
+        setComprasVencidas([]);
+        setProximosVencimentos([]);
+        return;
       }
+
+      const dataVal = snapshot.val();
+      // Array
+      const credArray = Object.keys(dataVal).map((k) => dataVal[k]);
+      // Filtra crediarios em aberto
+      const abertos = credArray.filter((c) => !c.closed);
+
+      // Calcula total pendente
+      let total = 0;
+      const vencidasArray = [];
+      const proximasArray = [];
+      const now = new Date();
+
+      abertos.forEach((sale) => {
+        // soma parcelas não pagas
+        sale.parcels.forEach((p) => {
+          if (!p.paid) {
+            total += parseFloat(p.amount);
+            const due = new Date(p.dueDate);
+            if (due < now) {
+              vencidasArray.push(sale);
+            } else {
+              // se dentro de 15 dias
+              const diff = (due - now) / (1000 * 60 * 60 * 24);
+              if (diff <= 15) {
+                proximasArray.push(sale);
+              }
+            }
+          }
+        });
+      });
+
+      setTotalPendente(total);
+      setComprasVencidas([...new Set(vencidasArray)]); // remove duplicados
+      setProximosVencimentos([...new Set(proximasArray)]);
     } catch (error) {
-      Alert.alert('Erro', 'Erro ao carregar crediário.');
+      Alert.alert('Erro', 'Erro ao carregar resumo do crediário.');
       console.error(error);
     }
   };
 
-  const calculateResumo = (sales) => {
-    const total = sales.reduce((sum, sale) => {
-      const pendente = sale.parcels
-        .filter((parcel) => !parcel.paid)
-        .reduce((subtotal, parcel) => subtotal + parseFloat(parcel.value), 0);
-      return sum + pendente;
-    }, 0);
-
-    const vencidas = sales.filter((sale) =>
-      sale.parcels.some((parcel) => !parcel.paid && new Date(parcel.date) < new Date())
-    );
-
-    const proximos = sales.flatMap((sale) =>
-      sale.parcels.filter(
-        (parcel) =>
-          !parcel.paid &&
-          new Date(parcel.date) >= new Date() &&
-          new Date(parcel.date) <= new Date(new Date().setDate(new Date().getDate() + 15))
-      )
-    );
-
-    setTotalPendente(total);
-    setComprasVencidas(vencidas);
-    setProximosVencimentos(proximos);
-  };
-
   const navigateToCrediarioScreen = (filterType) => {
-    navigation.navigate('CreditoScreen', { filterType });
+    // Exemplo: redireciona para a tela 'CreditoScreen' com um tipo de filtro
+    navigation.navigate('CreditoScreen', { lojaId, filterType });
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Resumo do Crediário</Text>
+      <Text style={styles.title}>Resumo do Crediário - Loja {lojaId}</Text>
 
-      {/* Total Pendente */}
       <TouchableOpacity
         style={styles.card}
         onPress={() => navigateToCrediarioScreen('totalPendente')}
@@ -74,7 +94,6 @@ const CrediarioResumoScreen = ({ navigation }) => {
         <Text style={styles.cardValue}>R$ {totalPendente.toFixed(2)}</Text>
       </TouchableOpacity>
 
-      {/* Compras Vencidas */}
       <TouchableOpacity
         style={styles.card}
         onPress={() => navigateToCrediarioScreen('comprasVencidas')}
@@ -83,7 +102,6 @@ const CrediarioResumoScreen = ({ navigation }) => {
         <Text style={styles.cardValue}>{comprasVencidas.length} compras</Text>
       </TouchableOpacity>
 
-      {/* Próximos Vencimentos */}
       <TouchableOpacity
         style={styles.card}
         onPress={() => navigateToCrediarioScreen('proximosVencimentos')}
@@ -94,6 +112,8 @@ const CrediarioResumoScreen = ({ navigation }) => {
     </View>
   );
 };
+
+export default CrediarioResumoScreen;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F7F9FC', padding: 20 },
@@ -108,5 +128,3 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 18, color: '#2D3142' },
   cardValue: { fontSize: 20, fontWeight: '600', color: '#3A86FF' },
 });
-
-export default CrediarioResumoScreen;

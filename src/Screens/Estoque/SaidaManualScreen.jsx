@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, FlatList, Modal, Alert
+  View, Text, TextInput, TouchableOpacity, FlatList, Modal, Alert, StyleSheet
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getDatabase, ref, get, update, push } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
 
-const SaidaManualScreen = () => {
+const SaidaManualScreen = ({ route }) => {
+  const { lojaId } = route.params;
+  const { user } = useAuthContext();
+
   const [produtos, setProdutos] = useState([]);
   const [filteredProdutos, setFilteredProdutos] = useState([]);
   const [filterValue, setFilterValue] = useState('');
@@ -23,17 +27,25 @@ const SaidaManualScreen = () => {
 
   const fetchProdutos = async () => {
     try {
-      const data = await AsyncStorage.getItem('estoqueData');
-      const parsed = data ? JSON.parse(data) : [];
-      setProdutos(parsed);
-      setFilteredProdutos(parsed);
+      const db = getDatabase();
+      const produtosRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos`);
+      const snapshot = await get(produtosRef);
+
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const arrayProdutos = Object.keys(data).map((key) => data[key]);
+        setProdutos(arrayProdutos);
+        setFilteredProdutos(arrayProdutos);
+      } else {
+        setProdutos([]);
+        setFilteredProdutos([]);
+      }
     } catch (error) {
       console.error(error);
-      Alert.alert('Erro', 'Não foi possível carregar os produtos.');
+      Alert.alert('Erro', 'Não foi possível carregar os produtos do Firebase.');
     }
   };
 
-  // Filtro básico
   const filtrar = (text) => {
     setFilterValue(text);
     if (!text.trim()) {
@@ -49,7 +61,6 @@ const SaidaManualScreen = () => {
 
   const handleSelectProduto = (produto) => {
     setProdutoSelecionado(produto);
-    // Zera os campos do modal
     setQuantidadeSaida('');
     setMotivoSaida('');
     setIsModalVisible(true);
@@ -61,7 +72,7 @@ const SaidaManualScreen = () => {
       return;
     }
 
-    const qtdAtual = Number(produtoSelecionado.quantidade);
+    const qtdAtual = Number(produtoSelecionado.quantidade) || 0;
     const qtdSaida = Number(quantidadeSaida);
     if (qtdSaida > qtdAtual) {
       Alert.alert('Erro', 'A quantidade de saída não pode exceder o estoque atual.');
@@ -69,52 +80,42 @@ const SaidaManualScreen = () => {
     }
 
     const novaQtd = qtdAtual - qtdSaida;
-    // Atualiza o produto
     const novoProduto = {
       ...produtoSelecionado,
       quantidade: novaQtd
     };
 
-    // Atualiza no array principal
-    const index = produtos.findIndex((p) => p.id === produtoSelecionado.id);
-    if (index !== -1) {
-      produtos[index] = novoProduto;
-    }
-
-    await AsyncStorage.setItem('estoqueData', JSON.stringify(produtos));
-    setProdutos([...produtos]);
-    setFilteredProdutos([...produtos]);
-
-    // Salva histórico de saída
-    await salvarHistoricoSaida(novoProduto, qtdSaida, motivoSaida);
-
-    Alert.alert('Sucesso', 'Saída registrada com sucesso!');
-    setIsModalVisible(false);
-  };
-
-  const salvarHistoricoSaida = async (produto, qtd, motivo) => {
     try {
-      const data = await AsyncStorage.getItem('movimentacoesData');
-      const movs = data ? JSON.parse(data) : [];
+      // 1. Atualiza produto
+      const db = getDatabase();
+      const produtoRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos/${produtoSelecionado.id}`);
+      await update(produtoRef, novoProduto);
+
+      // 2. Salva histórico de saída
+      const movRef = ref(db, `users/${user.uid}/movimentacoesData`);
+      const novaMovRef = push(movRef);
       const novaMov = {
-        id: Date.now().toString(),
-        produtoId: produto.id,
+        id: novaMovRef.key,
+        produtoId: produtoSelecionado.id,
         tipoMovimento: 'saida_manual',
-        quantidade: qtd,
-        motivo,
+        quantidade: qtdSaida,
+        motivo: motivoSaida,
         data: new Date().toISOString()
       };
-      movs.push(novaMov);
+      await update(novaMovRef, novaMov);
 
-      await AsyncStorage.setItem('movimentacoesData', JSON.stringify(movs));
+      Alert.alert('Sucesso', 'Saída registrada com sucesso!');
+      setIsModalVisible(false);
+      fetchProdutos();
     } catch (error) {
       console.error(error);
+      Alert.alert('Erro', 'Não foi possível registrar a saída no Firebase.');
     }
   };
 
   const renderProduto = ({ item }) => (
     <TouchableOpacity
-      style={{ padding: 10, borderBottomWidth: 1 }}
+      style={styles.itemContainer}
       onPress={() => handleSelectProduto(item)}
     >
       <Text>{item.nome} ({item.codigo}) - Qtd: {item.quantidade}</Text>
@@ -122,16 +123,14 @@ const SaidaManualScreen = () => {
   );
 
   return (
-    <View style={{ flex: 1, padding: 20 }}>
-      <Text style={{ fontSize: 24, marginBottom: 10 }}>Saída Manual</Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>Saída Manual</Text>
 
       <TextInput
         placeholder="Filtrar por nome ou código"
         value={filterValue}
         onChangeText={filtrar}
-        style={{
-          borderWidth: 1, borderColor: '#CCC', borderRadius: 8, padding: 10, marginBottom: 10
-        }}
+        style={styles.searchInput}
       />
 
       <FlatList
@@ -140,56 +139,45 @@ const SaidaManualScreen = () => {
         renderItem={renderProduto}
       />
 
-      {/* Modal de Saída */}
       <Modal
         visible={isModalVisible}
         transparent={true}
         animationType="slide"
         onRequestClose={() => setIsModalVisible(false)}
       >
-        <View style={{
-          flex: 1,
-          justifyContent: 'center',
-          backgroundColor: 'rgba(0,0,0,0.5)'
-        }}>
-          <View style={{
-            backgroundColor: '#FFF',
-            margin: 20,
-            borderRadius: 10,
-            padding: 20
-          }}>
-            <Text style={{ fontSize: 18, marginBottom: 10 }}>Saída Manual</Text>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Saída Manual</Text>
 
             <Text>Quantidade de saída:</Text>
             <TextInput
               keyboardType="numeric"
               value={quantidadeSaida}
               onChangeText={setQuantidadeSaida}
-              style={{ borderWidth: 1, borderColor: '#CCC', marginBottom: 10 }}
+              style={styles.modalInput}
             />
 
             <Text>Motivo da saída:</Text>
             <TextInput
               value={motivoSaida}
               onChangeText={setMotivoSaida}
-              style={{ borderWidth: 1, borderColor: '#CCC', marginBottom: 10 }}
+              style={styles.modalInput}
             />
 
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+            <View style={styles.buttonRow}>
               <TouchableOpacity
-                style={{ marginRight: 10, padding: 10, backgroundColor: '#CCC', borderRadius: 5 }}
+                style={[styles.buttonModal, { backgroundColor: '#CCC' }]}
                 onPress={() => setIsModalVisible(false)}
               >
                 <Text>Cancelar</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={{ padding: 10, backgroundColor: '#3A86FF', borderRadius: 5 }}
+                style={[styles.buttonModal, { backgroundColor: '#3A86FF' }]}
                 onPress={handleSalvarSaida}
               >
                 <Text style={{ color: '#FFF' }}>Salvar</Text>
               </TouchableOpacity>
             </View>
-
           </View>
         </View>
       </Modal>
@@ -198,3 +186,51 @@ const SaidaManualScreen = () => {
 };
 
 export default SaidaManualScreen;
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 20, backgroundColor: '#FFF' },
+  title: { fontSize: 24, marginBottom: 10 },
+  searchInput: {
+    borderWidth: 1,
+    borderColor: '#CCC',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  itemContainer: {
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContainer: {
+    backgroundColor: '#FFF',
+    margin: 20,
+    borderRadius: 10,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    marginBottom: 10,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#CCC',
+    borderRadius: 5,
+    marginBottom: 10,
+    padding: 8,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  buttonModal: {
+    padding: 10,
+    borderRadius: 5,
+    marginLeft: 10,
+  },
+});

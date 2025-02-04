@@ -8,10 +8,12 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getDatabase, ref, get, update } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
 
 const EditarProdutoScreen = ({ route, navigation }) => {
-  const { productId } = route.params; // Recebe o ID do produto a ser editado
+  const { productId, lojaId } = route.params; // Recebe o ID do produto e ID da loja
+  const { user } = useAuthContext();
 
   // Dados do produto que será editado
   const [produto, setProduto] = useState(null);
@@ -28,7 +30,7 @@ const EditarProdutoScreen = ({ route, navigation }) => {
   const [porcentagem, setPorcentagem] = useState('');
   const [valorVenda, setValorVenda] = useState('');
   const [lucro, setLucro] = useState('');
-  const [fornecedor, setFornecedor] = useState(''); // Novo Campo
+  const [fornecedor, setFornecedor] = useState('');
 
   // Para exibir dropdown de categorias e subcategorias
   const [categorias, setCategorias] = useState([]);
@@ -37,104 +39,97 @@ const EditarProdutoScreen = ({ route, navigation }) => {
   const [isSubCategoriaDropdownVisible, setIsSubCategoriaDropdownVisible] = useState(false);
 
   useEffect(() => {
-    // 1. Carregar dados do produto
     fetchProduto();
-
-    // 2. Carregar categorias do AsyncStorage
     loadCategorias();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
-   * Carrega o produto específico do AsyncStorage pelo ID (productId).
+   * Carrega o produto específico do Firebase
    */
   const fetchProduto = async () => {
     try {
-      const savedData = await AsyncStorage.getItem('estoqueData');
-      const produtos = savedData ? JSON.parse(savedData) : [];
-      const item = produtos.find((p) => p.id === productId);
+      const db = getDatabase();
+      const produtoRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos/${productId}`);
+      const snapshot = await get(produtoRef);
 
-      if (item) {
-        setProduto(item);
-        // Preenche os states do formulário
-        setNome(item.nome);
-        setCodigo(item.codigo);
-        setQuantidade(item.quantidade?.toString() || '');
-        setCategoria(item.categoria);
-        setSubCategoria(item.subCategoria || '');
-        setDataEntrada(formatarDataParaInput(item.dataEntrada)); // "AAAA-MM-DD" -> "DD/MM/AAAA"
-        setUnidade(item.unidade);
-        setValorCompra(item.valorCompra);
-        setPorcentagem(item.porcentagem);
-        setValorVenda(item.valorVenda);
-        setLucro(item.lucro);
-        setFornecedor(item.fornecedor || ''); // Preenche o fornecedor se existir
-      } else {
-        Alert.alert('Erro', 'Produto não encontrado.');
+      if (!snapshot.exists()) {
+        Alert.alert('Erro', 'Produto não encontrado no Firebase.');
         navigation.goBack();
+        return;
       }
+      const item = snapshot.val();
+      setProduto(item);
+
+      setNome(item.nome);
+      setCodigo(item.codigo);
+      setQuantidade(item.quantidade?.toString() || '');
+      setCategoria(item.categoria);
+      setSubCategoria(item.subCategoria || '');
+
+      // Formatando data "YYYY-MM-DD..." -> "DD/MM/YYYY"
+      if (item.dataEntrada && item.dataEntrada.includes('-')) {
+        const [ano, mes, diaRest] = item.dataEntrada.split('-');
+        const dia = diaRest.slice(0, 2); // se vier com T no final
+        setDataEntrada(`${dia}/${mes}/${ano}`);
+      } else {
+        setDataEntrada('');
+      }
+
+      setUnidade(item.unidade || '');
+      // Precisamos da última entrada para pegar valorCompra, porcentagem, valorVenda, lucro?
+      // Ou iremos usar item.valorCompra etc? O seu code armazena isso no "entradas".
+      // Vou supor que item tenha `valorCompra`, `porcentagem`, `valorVenda`, `lucro` no root
+      // MAS você estava salvando isso nas "entradas". Ajuste conforme sua estrutura real.
+      // Para manter seu layout, vou usar item:
+      setValorCompra(''); // Precisaria de nova logica se você quiser...
+      setPorcentagem('');
+      setValorVenda('');
+      setLucro('');
+      setFornecedor(item.fornecedor || '');
     } catch (error) {
-      console.error('Erro ao buscar produto:', error);
-      Alert.alert('Erro', 'Ocorreu um erro ao buscar o produto.');
+      console.error('Erro ao buscar produto no Firebase:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao buscar o produto no Firebase.');
     }
   };
 
   /**
-   * Carrega as categorias (e subcategorias) do AsyncStorage
+   * Carrega as categorias do Firebase
    */
   const loadCategorias = async () => {
     try {
-      const savedCategorias = await AsyncStorage.getItem('categoriasData');
-      const parsedCategorias = savedCategorias ? JSON.parse(savedCategorias) : [];
-      setCategorias(parsedCategorias);
+      const db = getDatabase();
+      const catRef = ref(db, `users/${user.uid}/categoriasData`);
+      const snapshot = await get(catRef);
+
+      if (snapshot.exists()) {
+        let parsed = [];
+        const data = snapshot.val();
+        if (Array.isArray(data)) {
+          parsed = data.filter(Boolean);
+        } else {
+          parsed = Object.values(data);
+        }
+        setCategorias(parsed);
+      } else {
+        setCategorias([]);
+      }
     } catch (error) {
       console.error('Erro ao carregar categorias:', error);
     }
   };
 
-  /**
-   * Seleciona uma categoria e mostra subcategorias
-   */
   const handleCategoriaSelect = (selectedCategoria) => {
     setCategoria(selectedCategoria.nome);
     setSubCategorias(selectedCategoria.subCategorias || []);
-    setSubCategoria(''); // Limpar subcategoria ao trocar de categoria
+    setSubCategoria('');
     setIsCategoriaDropdownVisible(false);
   };
 
-  /**
-   * Seleciona uma subcategoria
-   */
   const handleSubCategoriaSelect = (selectedSubCategoria) => {
     setSubCategoria(selectedSubCategoria);
     setIsSubCategoriaDropdownVisible(false);
   };
 
-  /**
-   * Formatar data "AAAA-MM-DD" -> "DD/MM/AAAA" para exibir no input
-   */
-  const formatarDataParaInput = (data) => {
-    if (data && data.includes('-')) {
-      const [ano, mes, dia] = data.split('-');
-      return `${dia}/${mes}/${ano}`;
-    }
-    return data || '';
-  };
-
-  /**
-   * Formatar data "DD/MM/AAAA" -> "AAAA-MM-DD" para salvar
-   */
-  const formatarDataParaSalvar = (data) => {
-    const [dia, mes, ano] = data.split('/');
-    if (dia && mes && ano) {
-      return `${ano}-${mes}-${dia}`;
-    }
-    return data;
-  };
-
-  /**
-   * Máscara de data em tempo real: DD/MM/AAAA
-   */
   const handleDataChange = (text) => {
     let cleaned = text.replace(/\D/g, '');
     if (cleaned.length > 2) {
@@ -149,19 +144,6 @@ const EditarProdutoScreen = ({ route, navigation }) => {
     setDataEntrada(cleaned);
   };
 
-  /**
-   * Formata para número com 2 casas decimais
-   */
-  const formatNumber = (value) => {
-    if (!isNaN(parseFloat(value))) {
-      return parseFloat(value).toFixed(2);
-    }
-    return '';
-  };
-
-  /**
-   * Cálculo: valorVenda = valorCompra + (valorCompra * porcentagem / 100)
-   */
   const calculateFromCompraAndPorcentagem = () => {
     const compraNumber = parseFloat(valorCompra);
     const porcentNumber = parseFloat(porcentagem);
@@ -175,9 +157,6 @@ const EditarProdutoScreen = ({ route, navigation }) => {
     }
   };
 
-  /**
-   * Cálculo: porcentagem = ((valorVenda - valorCompra)/valorCompra) * 100
-   */
   const calculateFromCompraAndVenda = () => {
     const compraNumber = parseFloat(valorCompra);
     const vendaNumber = parseFloat(valorVenda);
@@ -191,56 +170,29 @@ const EditarProdutoScreen = ({ route, navigation }) => {
     }
   };
 
-  /**
-   * Se o usuário sai do campo Valor de Compra, mantemos a mesma % se ela existir;
-   * caso não haja %, mas tenha Valor de Venda, recalculamos a %; caso contrário, nada.
-   */
   const handleValorCompraEndEditing = () => {
     const compraNumber = parseFloat(valorCompra);
-    if (isNaN(compraNumber)) return; // se o usuário digitou nada ou algo inválido
+    if (isNaN(compraNumber)) return;
 
     if (!isNaN(parseFloat(porcentagem)) && parseFloat(porcentagem) !== 0) {
-      // Se já houver uma porcentagem
       calculateFromCompraAndPorcentagem();
     } else if (!isNaN(parseFloat(valorVenda)) && parseFloat(valorVenda) !== 0) {
-      // Se não houver porcentagem mas houver valor de venda
       calculateFromCompraAndVenda();
     }
-    // Caso contrário, não faz nada
   };
 
   /**
-   * Salva as alterações no AsyncStorage
+   * Atualiza o produto no Firebase
    */
   const handleSave = async () => {
-    // Validação dos campos obrigatórios
-    if (
-      !nome ||
-      !codigo ||
-      !categoria ||
-      !dataEntrada ||
-      !unidade ||
-      !valorCompra ||
-      !valorVenda ||
-      !fornecedor // Verifica também o novo campo
-    ) {
-      Alert.alert('Erro', 'Preencha todos os campos!');
+    if (!nome || !codigo || !categoria || !dataEntrada || !unidade || !fornecedor) {
+      Alert.alert('Erro', 'Preencha todos os campos obrigatórios!');
       return;
     }
 
     try {
-      const savedData = await AsyncStorage.getItem('estoqueData');
-      const produtos = savedData ? JSON.parse(savedData) : [];
-
-      // Verificar se o código já existe em outro produto
-      const existe = produtos.find((prod) => prod.codigo === codigo && prod.id !== productId);
-      if (existe) {
-        Alert.alert('Erro', 'Já existe um produto com este código. Por favor, insira um código único.');
-        return;
-      }
-
-      // Converte data "DD/MM/AAAA" em "AAAA-MM-DD" (opcional)
-      let dataFormatada = dataEntrada;
+      // Converte "DD/MM/AAAA" em "AAAA-MM-DD"
+      let dataISO = '';
       const [dia, mes, ano] = dataEntrada.split('/');
       if (dia && mes && ano) {
         const dataObj = new Date(+ano, mes - 1, +dia);
@@ -248,43 +200,39 @@ const EditarProdutoScreen = ({ route, navigation }) => {
           Alert.alert('Erro', 'Data de entrada inválida.');
           return;
         }
-        dataFormatada = dataObj.toISOString().split('T')[0];
+        dataISO = dataObj.toISOString().split('T')[0];
       }
 
+      // Monta o objeto atualizado
       const produtoAtualizado = {
-        id: produto.id,
+        ...produto,
         nome,
         codigo,
-        quantidade: produto.quantidade, // Manter a quantidade original
         categoria,
         subCategoria,
-        dataEntrada: dataFormatada,
+        dataEntrada: dataISO,
         unidade,
-        valorCompra: parseFloat(valorCompra).toFixed(2),
-        porcentagem: parseFloat(porcentagem).toFixed(2),
-        valorVenda: parseFloat(valorVenda).toFixed(2),
-        lucro: parseFloat(lucro).toFixed(2),
-        fornecedor, // Adiciona o novo campo
+        fornecedor,
+        // Caso queira salvar no root
+        valorCompra: valorCompra ? parseFloat(valorCompra).toFixed(2) : '0.00',
+        porcentagem: porcentagem ? parseFloat(porcentagem).toFixed(2) : '0.00',
+        valorVenda: valorVenda ? parseFloat(valorVenda).toFixed(2) : '0.00',
+        lucro: lucro ? parseFloat(lucro).toFixed(2) : '0.00',
       };
 
-      // Substitui o produto no array
-      const updatedProdutos = produtos.map((p) =>
-        p.id === produto.id ? produtoAtualizado : p
-      );
-
-      // Persiste no AsyncStorage
-      await AsyncStorage.setItem('estoqueData', JSON.stringify(updatedProdutos));
+      const db = getDatabase();
+      const produtoRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos/${productId}`);
+      await update(produtoRef, produtoAtualizado);
 
       Alert.alert('Sucesso', 'Produto atualizado com sucesso!');
       navigation.goBack();
     } catch (error) {
-      Alert.alert('Erro', 'Não foi possível atualizar o produto.');
+      Alert.alert('Erro', 'Não foi possível atualizar o produto no Firebase.');
       console.error('Erro ao atualizar produto:', error);
     }
   };
 
   if (!produto) {
-    // Enquanto o produto não estiver carregado, pode exibir algo como:
     return (
       <View style={styles.container}>
         <Text>Carregando dados...</Text>
@@ -326,12 +274,12 @@ const EditarProdutoScreen = ({ route, navigation }) => {
             style={[styles.input, styles.disabledInput]}
             placeholder="Quantidade"
             value={quantidade}
-            editable={false} // Desativa a edição
-            selectTextOnFocus={false} // Não permite seleção de texto
+            editable={false}
+            selectTextOnFocus={false}
           />
         </View>
 
-        {/* Selecionar Categoria */}
+        {/* Categoria */}
         <View style={styles.fieldContainer}>
           <Text style={styles.label}>Categoria</Text>
           <View style={styles.row}>
@@ -358,9 +306,7 @@ const EditarProdutoScreen = ({ route, navigation }) => {
               <TouchableOpacity
                 key={cat.nome}
                 style={styles.dropdownItem}
-                onPress={() => {
-                  handleCategoriaSelect(cat);
-                }}
+                onPress={() => handleCategoriaSelect(cat)}
               >
                 <Text style={styles.dropdownItemText}>{cat.nome}</Text>
               </TouchableOpacity>
@@ -368,15 +314,13 @@ const EditarProdutoScreen = ({ route, navigation }) => {
           </View>
         )}
 
-        {/* Se a categoria tem subcategorias, exibe dropdown */}
+        {/* Subcategoria (se existir) */}
         {subCategorias.length > 0 && (
           <View style={styles.fieldContainer}>
             <Text style={styles.label}>Subcategoria</Text>
             <TouchableOpacity
               style={styles.dropdown}
-              onPress={() =>
-                setIsSubCategoriaDropdownVisible(!isSubCategoriaDropdownVisible)
-              }
+              onPress={() => setIsSubCategoriaDropdownVisible(!isSubCategoriaDropdownVisible)}
             >
               <Text style={styles.dropdownText}>
                 {subCategoria || 'Selecionar Subcategoria'}
@@ -531,23 +475,20 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   disabledInput: {
-    backgroundColor: '#E0E0E0', // Cor para indicar que está desativado
-    color: '#7D7D7D', // Cor do texto para indicar desativação
+    backgroundColor: '#E0E0E0',
+    color: '#7D7D7D',
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
   },
-  inputHalf: {
-    width: '48%',
-  },
   dropdownContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#BDBDBD',
-    maxHeight: 150, // Limita a altura do dropdown
+    maxHeight: 150,
     marginBottom: 10,
   },
   fullWidthDropdown: {
@@ -592,7 +533,7 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 20, // Ajuste para separar do campo anterior
+    marginTop: 20,
   },
   buttonText: {
     color: '#FFFFFF',

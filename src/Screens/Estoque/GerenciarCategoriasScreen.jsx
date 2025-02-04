@@ -9,10 +9,34 @@ import {
   Alert,
   Modal,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
+import { getDatabase, ref, get, set } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
+import { useRoute } from '@react-navigation/native';
 
 const AddCategoriaScreen = () => {
+  const route = useRoute();
+  const { lojaId } = route.params || {};
+  const { user } = useAuthContext();
+
+  // LOG para depuração: ver se lojaId chegou de fato
+  console.log('AddCategoriaScreen -- lojaId recebido:', lojaId);
+
+  // Verifica se user ou lojaId são inválidos
+  const userInvalido = !user || !user.uid;
+  const lojaIdInvalido = !lojaId || typeof lojaId !== 'string' || lojaId.trim() === '';
+
+  // Se for inválido, só renderiza mensagem de erro e não faz nada no DB
+  if (userInvalido || lojaIdInvalido) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>
+          Erro: usuário não autenticado ou lojaId inválido para gerenciar categorias.
+        </Text>
+      </View>
+    );
+  }
+
   const [categorias, setCategorias] = useState([]);
   const [novaCategoria, setNovaCategoria] = useState('');
   const [subCategorias, setSubCategorias] = useState([]);
@@ -20,45 +44,76 @@ const AddCategoriaScreen = () => {
   const [selectedCategoria, setSelectedCategoria] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
 
+  // Ao montar ou quando lojaId mudar, carrega as categorias existentes
   useEffect(() => {
     loadCategorias();
-  }, []);
+  }, [lojaId]);
 
+  /**
+   * Carrega array de categorias em 
+   *   users/{user.uid}/lojas/{lojaId}/estoque/categoriasData
+   */
   const loadCategorias = async () => {
     try {
-      const savedData = await AsyncStorage.getItem('categoriasData');
-      setCategorias(savedData ? JSON.parse(savedData) : []);
+      const db = getDatabase();
+      const catRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/categoriasData`);
+      const snapshot = await get(catRef);
+
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        let parsed = [];
+        if (Array.isArray(data)) {
+          // Se for array, filtra falsy
+          parsed = data.filter(Boolean);
+        } else {
+          // Se for objeto, converte para array de objetos
+          parsed = Object.values(data);
+        }
+        setCategorias(parsed);
+      } else {
+        // Se não existir, começa com um array vazio
+        setCategorias([]);
+      }
     } catch (error) {
       console.error('Erro ao carregar categorias:', error);
+      Alert.alert('Erro', 'Não foi possível carregar as categorias do estoque.');
     }
   };
 
   /**
-   * Adiciona uma nova categoria (com subcategorias) no AsyncStorage.
+   * Adiciona nova categoria ao array local e salva no DB
    */
   const saveCategoria = async () => {
     if (!novaCategoria.trim()) {
       Alert.alert('Erro', 'O nome da categoria não pode estar vazio.');
       return;
     }
-    // Cria um novo objeto de categoria
-    const updatedCategorias = [
-      ...categorias,
-      { nome: novaCategoria, subCategorias },
-    ];
 
-    await AsyncStorage.setItem('categoriasData', JSON.stringify(updatedCategorias));
-    setCategorias(updatedCategorias);
+    // Monta objeto
+    const nova = { nome: novaCategoria, subCategorias };
+    // Atualiza array local
+    const updatedCategorias = [...categorias, nova];
 
-    // Limpa os states
-    setNovaCategoria('');
-    setSubCategorias([]);
+    try {
+      const db = getDatabase();
+      const catRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/categoriasData`);
 
-    Alert.alert('Sucesso', 'Categoria adicionada com sucesso!');
+      // Salva array completo
+      await set(catRef, updatedCategorias);
+
+      // Atualiza estado local
+      setCategorias(updatedCategorias);
+      setNovaCategoria('');
+      setSubCategorias([]);
+      Alert.alert('Sucesso', 'Categoria adicionada no estoque da loja!');
+    } catch (error) {
+      console.error('Erro ao salvar categoria:', error);
+      Alert.alert('Erro', 'Não foi possível salvar a categoria no estoque.');
+    }
   };
 
   /**
-   * Adiciona uma subcategoria ao array atual (em memória).
+   * Adiciona nova subcategoria ao array local subCategorias
    */
   const addSubCategoria = () => {
     if (!novaSubCategoria.trim()) {
@@ -74,18 +129,19 @@ const AddCategoriaScreen = () => {
   };
 
   /**
-   * Quando clicar em "Editar" em uma categoria existente.
-   * - Preenche o modal com o nome da categoria e subcategorias atuais.
+   * Quando clica em 'Editar' de uma categoria existente,
+   * abrimos modal e pré-preenchemos os campos
    */
   const editCategoria = (categoria) => {
     setSelectedCategoria(categoria);
-    setNovaCategoria(categoria.nome);            // Nome atual da categoria
-    setSubCategorias([...categoria.subCategorias]); // Copia subcategorias existentes
+    setNovaCategoria(categoria.nome);
+    // Copia subCategorias
+    setSubCategorias([...categoria.subCategorias]);
     setModalVisible(true);
   };
 
   /**
-   * Salva as mudanças feitas no modal (nome e subcategorias).
+   * Salva a edição da categoria no array + DB
    */
   const updateCategoria = async () => {
     if (!novaCategoria.trim()) {
@@ -93,39 +149,54 @@ const AddCategoriaScreen = () => {
       return;
     }
 
+    // Substitui a categoria antiga pela nova
     const updatedCategorias = categorias.map((cat) =>
       cat.nome === selectedCategoria.nome
         ? { ...cat, nome: novaCategoria, subCategorias }
         : cat
     );
 
-    await AsyncStorage.setItem('categoriasData', JSON.stringify(updatedCategorias));
-    setCategorias(updatedCategorias);
+    try {
+      const db = getDatabase();
+      const catRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/categoriasData`);
 
-    // Fecha modal e limpa states
-    setModalVisible(false);
-    setSelectedCategoria(null);
-    setNovaCategoria('');
-    setSubCategorias([]);
+      // Salva array completo
+      await set(catRef, updatedCategorias);
 
-    Alert.alert('Sucesso', 'Categoria atualizada com sucesso!');
+      // Atualiza estado local
+      setCategorias(updatedCategorias);
+      // Fecha modal, limpa states
+      setModalVisible(false);
+      setSelectedCategoria(null);
+      setNovaCategoria('');
+      setSubCategorias([]);
+      Alert.alert('Sucesso', 'Categoria atualizada no estoque!');
+    } catch (error) {
+      console.error('Erro ao atualizar categoria:', error);
+      Alert.alert('Erro', 'Não foi possível atualizar a categoria no estoque.');
+    }
   };
 
   /**
-   * Exclui uma categoria inteira.
+   * Exclui categoria inteira do array + DB
    */
   const deleteCategoria = async (categoria) => {
-    const updatedCategorias = categorias.filter(
-      (cat) => cat.nome !== categoria.nome
-    );
-    await AsyncStorage.setItem('categoriasData', JSON.stringify(updatedCategorias));
-    setCategorias(updatedCategorias);
+    const updatedCategorias = categorias.filter((cat) => cat.nome !== categoria.nome);
+    try {
+      const db = getDatabase();
+      const catRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/categoriasData`);
+      await set(catRef, updatedCategorias);
 
-    Alert.alert('Sucesso', 'Categoria excluída com sucesso!');
+      setCategorias(updatedCategorias);
+      Alert.alert('Sucesso', 'Categoria excluída do estoque!');
+    } catch (error) {
+      console.error('Erro ao excluir categoria:', error);
+      Alert.alert('Erro', 'Não foi possível excluir a categoria do estoque.');
+    }
   };
 
   /**
-   * Remove subcategoria do array local (enquanto estamos editando/criando).
+   * Exclui subcategoria do array local (enquanto estamos criando/editando)
    */
   const handleDeleteSubCategoria = (sub) => {
     const newArray = subCategorias.filter((item) => item !== sub);
@@ -133,47 +204,36 @@ const AddCategoriaScreen = () => {
   };
 
   /**
-   * "Edita" subcategoria - remove a antiga e joga o valor no campo de texto
-   * para o usuário poder alterar.
+   * "Edita" subcategoria
+   * - remove do array
+   * - joga valor no campo input (novaSubCategoria)
    */
   const handleEditSubCategoria = (sub) => {
-    // 1. Remove sub do array
     const newArray = subCategorias.filter((item) => item !== sub);
     setSubCategorias(newArray);
-
-    // 2. Coloca no input
     setNovaSubCategoria(sub);
   };
 
   /**
-   * Renderiza cada categoria na lista principal
+   * Renderiza item de categoria
    */
   const renderCategoria = ({ item }) => (
     <View style={styles.categoriaContainer}>
       <View style={{ flex: 1 }}>
         <Text style={styles.categoriaText}>{item.nome}</Text>
-
-        {item.subCategorias.map((sub, index) => (
+        {item.subCategorias && item.subCategorias.map((sub, index) => (
           <Text key={index} style={styles.subCategoriaText}>
             - {sub}
           </Text>
         ))}
       </View>
-
       <View style={styles.actionsContainer}>
-        {/* Botão Editar Categoria */}
-        <TouchableOpacity
-          style={styles.iconButton}
-          onPress={() => editCategoria(item)}
-        >
+        {/* Botão Editar */}
+        <TouchableOpacity style={styles.iconButton} onPress={() => editCategoria(item)}>
           <Feather name="edit" size={20} color="#3A86FF" />
         </TouchableOpacity>
-
-        {/* Botão Excluir Categoria */}
-        <TouchableOpacity
-          style={styles.iconButton}
-          onPress={() => deleteCategoria(item)}
-        >
+        {/* Botão Excluir */}
+        <TouchableOpacity style={styles.iconButton} onPress={() => deleteCategoria(item)}>
           <Feather name="trash" size={20} color="#E74C3C" />
         </TouchableOpacity>
       </View>
@@ -181,26 +241,16 @@ const AddCategoriaScreen = () => {
   );
 
   /**
-   * Renderiza cada subcategoria (na parte de criar/editar) com botões de editar e excluir
+   * Renderiza item de subcategoria
    */
   const renderSubCategoriaItem = ({ item }) => (
     <View style={styles.subCategoryItem}>
       <Text style={styles.subCategoriaText}>- {item}</Text>
-
       <View style={{ flexDirection: 'row' }}>
-        {/* Editar subcategoria */}
-        <TouchableOpacity
-          style={styles.iconButton}
-          onPress={() => handleEditSubCategoria(item)}
-        >
+        <TouchableOpacity style={styles.iconButton} onPress={() => handleEditSubCategoria(item)}>
           <Feather name="edit-2" size={16} color="#3A86FF" />
         </TouchableOpacity>
-
-        {/* Excluir subcategoria */}
-        <TouchableOpacity
-          style={styles.iconButton}
-          onPress={() => handleDeleteSubCategoria(item)}
-        >
+        <TouchableOpacity style={styles.iconButton} onPress={() => handleDeleteSubCategoria(item)}>
           <Feather name="trash-2" size={16} color="#E74C3C" />
         </TouchableOpacity>
       </View>
@@ -209,9 +259,9 @@ const AddCategoriaScreen = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Gerenciar Categorias</Text>
+      <Text style={styles.title}>Gerenciar Categorias (Loja: {lojaId})</Text>
 
-      {/* =========== FORMULÁRIO PARA CRIAR NOVA CATEGORIA ========== */}
+      {/* Campo pra nova categoria */}
       <TextInput
         style={styles.input}
         placeholder="Nova Categoria"
@@ -219,13 +269,14 @@ const AddCategoriaScreen = () => {
         onChangeText={setNovaCategoria}
       />
 
-      {/* Lista de subcategorias adicionadas (na criação) */}
+      {/* Lista local de subCategorias que estamos criando */}
       <FlatList
         data={subCategorias}
         keyExtractor={(item, index) => index.toString()}
         renderItem={renderSubCategoriaItem}
       />
 
+      {/* Adiciona subcategoria */}
       <View style={styles.row}>
         <TextInput
           style={[styles.input, styles.inputHalf]}
@@ -238,21 +289,24 @@ const AddCategoriaScreen = () => {
         </TouchableOpacity>
       </View>
 
+      {/* Botão que salva a nova categoria */}
       <TouchableOpacity style={styles.addButton} onPress={saveCategoria}>
         <Text style={styles.buttonText}>Salvar Categoria</Text>
       </TouchableOpacity>
 
-      {/* =========== LISTA DE CATEGORIAS EXISTENTES ========== */}
+      {/* Lista de categorias do DB */}
       <FlatList
         data={categorias}
-        keyExtractor={(item) => item.nome}
+        keyExtractor={(item, index) => index.toString()}
         renderItem={renderCategoria}
+        style={{ marginTop: 10 }}
       />
 
-      {/* =========== MODAL PARA EDITAR UMA CATEGORIA EXISTENTE ========== */}
+      {/* Modal p/ Editar Categoria Existente */}
       <Modal visible={modalVisible} transparent={true} animationType="slide">
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
+            {/* Campo pra editar nome */}
             <TextInput
               style={styles.input}
               placeholder="Editar Categoria"
@@ -260,13 +314,14 @@ const AddCategoriaScreen = () => {
               onChangeText={setNovaCategoria}
             />
 
-            {/* Lista de subcategorias (durante edição) */}
+            {/* Lista de subcategorias da categoria em edição */}
             <FlatList
               data={subCategorias}
               keyExtractor={(item, index) => index.toString()}
               renderItem={renderSubCategoriaItem}
             />
 
+            {/* Adiciona subcategoria no modo edição */}
             <View style={styles.row}>
               <TextInput
                 style={[styles.input, styles.inputHalf]}
@@ -279,12 +334,10 @@ const AddCategoriaScreen = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Botão para confirmar edição */}
             <TouchableOpacity style={styles.addButton} onPress={updateCategoria}>
               <Text style={styles.buttonText}>Salvar Categoria</Text>
             </TouchableOpacity>
 
-            {/* Botão para cancelar/fechar modal */}
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={() => {
@@ -306,15 +359,34 @@ const AddCategoriaScreen = () => {
 export default AddCategoriaScreen;
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: '#F7F9FC' },
-  title: { fontSize: 24, fontWeight: '600', marginBottom: 10 },
+  centered: {
+    flex:1,
+    justifyContent:'center',
+    alignItems:'center',
+    padding:20
+  },
+  errorText: {
+    fontSize:16,
+    color:'red',
+    textAlign:'center'
+  },
+  container: { 
+    flex: 1, 
+    padding: 20, 
+    backgroundColor: '#F7F9FC' 
+  },
+  title: { 
+    fontSize: 22, 
+    fontWeight: '600', 
+    marginBottom: 12 
+  },
   input: {
     borderWidth: 1,
     borderColor: '#BDBDBD',
     borderRadius: 8,
     padding: 10,
     marginBottom: 10,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FFF',
   },
   addButton: {
     backgroundColor: '#3A86FF',
@@ -331,37 +403,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-  buttonText: { color: '#FFFFFF', fontWeight: '600' },
+  buttonText: {
+    color: '#FFF',
+    fontWeight: '600',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inputHalf: {
+    flex: 1,
+    marginRight: 10,
+  },
   categoriaContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 10,
-    backgroundColor: '#FFFFFF',
-    marginVertical: 5,
-    borderRadius: 8,
-  },
-  categoriaText: { fontSize: 16, fontWeight: '600' },
-  subCategoriaText: { fontSize: 14, marginLeft: 8, color: '#555' },
-  actionsContainer: { flexDirection: 'row' },
-  iconButton: { marginLeft: 10 },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  modalContent: {
     backgroundColor: '#FFF',
-    padding: 20,
-    borderRadius: 10,
-    marginHorizontal: 20,
+    padding: 10,
+    borderRadius: 8,
+    marginVertical: 5,
   },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  inputHalf: { flex: 1, marginRight: 10 },
+  categoriaText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  subCategoriaText: {
+    fontSize: 14,
+    marginLeft: 8,
+    color: '#555',
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+  },
+  iconButton: {
+    marginLeft: 10,
+  },
   subCategoryItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 5,
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  modalContent: {
+    backgroundColor: '#FFF',
+    padding: 20,
+    borderRadius: 10,
+    margin: 20,
   },
 });

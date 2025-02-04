@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,135 +6,150 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  RefreshControl,
   Dimensions,
   Modal,
+  RefreshControl,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Checkbox from 'expo-checkbox';
-import { useFocusEffect } from '@react-navigation/native';
+import { getDatabase, ref, onValue, off, remove } from 'firebase/database';
+import { getAuth } from 'firebase/auth';
 import SideMenu from '../../componentes/SideMenu ';
+
 const { width } = Dimensions.get('window');
 
-const MetaScreen = ({ navigation }) => {
+const MetaScreen = ({ navigation, route }) => {
+  // Recebemos lojaId via route.params
+  const { lojaId } = route.params || {};
+  
+  // Pegamos o userId diretamente do objeto de autenticação
+  const auth = getAuth();
+  const userId = auth.currentUser?.uid;
+
+  // Estados do componente
   const [data, setData] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Exemplo de modal de aniversariantes (opcional)
   const [showBirthdayModal, setShowBirthdayModal] = useState(false);
   const [birthdaysToday, setBirthdaysToday] = useState([]);
   const [doNotRemindToday, setDoNotRemindToday] = useState(false);
 
+  // Caso userId ou lojaId não venham corretamente
+  if (!userId || !lojaId) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>
+          Erro: Usuário não autenticado ou lojaId não fornecido.
+        </Text>
+      </View>
+    );
+  }
+
+  /**
+   * Montamos um listener em tempo real (onValue) para /metas.
+   * Sempre que alterar no DB, 'data' será atualizado.
+   */
   useEffect(() => {
-    checkAndLoadBirthdayReminder();
-  }, []);
-
-  const checkAndLoadBirthdayReminder = async () => {
-    try {
-      const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-      const skipReminder = await AsyncStorage.getItem('skipBirthdayReminder');
-
-      if (skipReminder !== today) {
-        await fetchBirthdaysToday();
-        setShowBirthdayModal(true);
+    const db = getDatabase();
+    const metasRef = ref(db, `users/${userId}/lojas/${lojaId}/metas`);
+    
+    // Listener em tempo real
+    const unsubscribe = onValue(metasRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const metasObj = snapshot.val() || {};
+        // Converte de objeto -> array
+        const metasArray = Object.entries(metasObj).map(([key, value]) => ({
+          id: key,
+          ...value,
+        }));
+        setData(metasArray);
+      } else {
+        // Se não tiver nada em "/metas", array vazio
+        setData([]);
       }
-    } catch (error) {
-      console.error('Erro ao verificar lembrete de aniversários:', error);
-    }
-  };
+    }, (error) => {
+      console.error('Erro ao ler metas:', error);
+      Alert.alert('Erro', 'Não foi possível carregar as metas do Firebase.');
+    });
 
-  const fetchBirthdaysToday = async () => {
-    try {
-      const savedCustomers = await AsyncStorage.getItem('customersData');
-      const customers = savedCustomers ? JSON.parse(savedCustomers) : [];
-      const today = new Date();
-      const todayFormatted = today.toISOString().slice(5, 10); // MM-DD
+    // Cleanup: remove o listener quando desmontar
+    return () => {
+      off(metasRef, 'value', unsubscribe);
+    };
+  }, [userId, lojaId]);
 
-      const birthdays = customers.filter((customer) => {
-        const customerDOB = customer.dob?.split('/').reverse().join('-'); // DD/MM/YYYY para YYYY-MM-DD
-        return customerDOB?.slice(5, 10) === todayFormatted;
-      });
-
-      setBirthdaysToday(birthdays);
-    } catch (error) {
-      console.error('Erro ao carregar aniversariantes:', error);
-    }
-  };
-
-  const saveSkipReminder = async () => {
-    try {
-      if (doNotRemindToday) {
-        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-        await AsyncStorage.setItem('skipBirthdayReminder', today);
-      }
-      setShowBirthdayModal(false);
-    } catch (error) {
-      console.error('Erro ao salvar preferência de lembrete:', error);
-    }
-  };
-
-  const loadData = useCallback(async () => {
-    try {
-      const savedData = await AsyncStorage.getItem('financeData');
-      if (savedData !== null) {
-        setData(JSON.parse(savedData));
-      }
-    } catch (error) {
-      console.error('Erro ao carregar dados:', error);
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [loadData])
-  );
-
-  const onRefresh = async () => {
+  /**
+   * "Pull to refresh": Podemos apenas simular,
+   * pois onValue() já mantém dados em tempo real.
+   */
+  const onRefresh = () => {
     setIsRefreshing(true);
-    await loadData();
-    setIsRefreshing(false);
-  };
-
-  const handleDelete = async (id) => {
-    Alert.alert('Excluir Meta', 'Tem certeza de que deseja excluir esta meta?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Excluir',
-        onPress: async () => {
-          try {
-            const updatedData = data.filter((item) => item.id !== id);
-            await AsyncStorage.setItem('financeData', JSON.stringify(updatedData));
-            setData(updatedData);
-          } catch (error) {
-            console.error('Erro ao excluir dados:', error);
-          }
-        },
-      },
-    ]);
-  };
-
-  const handleEdit = (item, index) => {
-    navigation.navigate('EditGoal', { item, index });
+    // Espera um pouquinho e desliga o indicador
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 1000);
   };
 
   /**
-   * Função para formatar o número para o padrão de moeda brasileira
+   * Ao excluir meta
    */
-  const formatToReal = (number) => {
-    return Number(number).toLocaleString('pt-BR', {
+  const handleDelete = (metaId) => {
+    Alert.alert(
+      'Excluir Meta',
+      'Tem certeza de que deseja excluir esta meta?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const db = getDatabase();
+              const metaRef = ref(db, `users/${userId}/lojas/${lojaId}/metas/${metaId}`);
+              await remove(metaRef);
+              // Não precisa chamar nada: onValue() atualiza sozinho
+            } catch (error) {
+              console.error('Erro ao excluir meta:', error);
+              Alert.alert('Erro', 'Não foi possível excluir a meta.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  /**
+   * Ao editar meta
+   */
+  const handleEdit = (item, index) => {
+    // Navega para EditGoal, passando item / index se precisar
+    navigation.navigate('EditGoal', { item, index, lojaId, userId });
+  };
+
+  /**
+   * Formata um valor (número) em Reais
+   */
+  const formatToReal = (num) => {
+    return Number(num || 0).toLocaleString('pt-BR', {
       style: 'currency',
       currency: 'BRL',
     });
   };
 
+  /**
+   * Render de cada meta na lista
+   */
   const renderItem = ({ item, index }) => (
     <TouchableOpacity
       style={styles.listItem}
       activeOpacity={0.8}
-      onPress={() => navigation.navigate('AddSalesScreen', { metaId: item.id })} // Corrigido para navegar
+      onPress={() =>
+        navigation.navigate('AddSalesScreen', { metaId: item.id, lojaId, userId })
+      }
     >
       <View style={styles.listTextContainer}>
-        <Text style={styles.listName}>{item.name}</Text>
-        <Text style={styles.listValue}>{formatToReal(item.value)}</Text>
+        <Text style={styles.listName}>{item.nome || item.name}</Text>
+        <Text style={styles.listValue}>{formatToReal(item.valor || item.value)}</Text>
       </View>
       <View style={styles.buttonContainer}>
         <TouchableOpacity
@@ -143,6 +158,7 @@ const MetaScreen = ({ navigation }) => {
         >
           <Text style={styles.buttonText}>Editar</Text>
         </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.button, styles.deleteButton]}
           onPress={() => handleDelete(item.id)}
@@ -153,12 +169,16 @@ const MetaScreen = ({ navigation }) => {
     </TouchableOpacity>
   );
 
+  /**
+   * Se estiver tudo certo, renderiza a tela
+   */
   return (
     <SideMenu navigation={navigation}>
       <View style={styles.container}>
         <View style={styles.background}>
           <View style={styles.halfMoon} />
         </View>
+
         <View style={styles.titleWrapper}>
           <Text style={styles.title}>Metas</Text>
         </View>
@@ -167,6 +187,7 @@ const MetaScreen = ({ navigation }) => {
           data={data}
           keyExtractor={(item) => (item.id ? item.id.toString() : '0')}
           renderItem={renderItem}
+          // Pull to refresh
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
           }
@@ -176,15 +197,16 @@ const MetaScreen = ({ navigation }) => {
             </View>
           }
         />
+
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => navigation.navigate('AddGoal')}
+          onPress={() => navigation.navigate('AddGoal', { lojaId })}
           activeOpacity={0.8}
         >
           <Text style={styles.addButtonText}>Adicionar Meta</Text>
         </TouchableOpacity>
 
-        {/* Modal de Aniversariantes */}
+        {/* Exemplo de Modal de Aniversariantes (opcional) */}
         <Modal
           visible={showBirthdayModal}
           transparent
@@ -219,7 +241,7 @@ const MetaScreen = ({ navigation }) => {
               <View style={styles.modalActions}>
                 <TouchableOpacity
                   style={styles.modalButton}
-                  onPress={saveSkipReminder}
+                  onPress={() => setShowBirthdayModal(false)}
                 >
                   <Text style={styles.modalButtonText}>Fechar</Text>
                 </TouchableOpacity>
@@ -232,7 +254,21 @@ const MetaScreen = ({ navigation }) => {
   );
 };
 
+export default MetaScreen;
+
+// Estilos
 const styles = StyleSheet.create({
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: 'red',
+    textAlign: 'center',
+  },
   container: {
     flex: 1,
     padding: 20,
@@ -270,28 +306,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#FFF',
   },
-  headerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    backgroundColor: '#3A86FF',
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  headerTextName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    flex: 1,
-  },
-  headerTextValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    textAlign: 'right',
-    flex: 1,
-  },
   listItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -300,6 +314,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#FFFFFF',
     marginBottom: 10,
+    // sombra leve
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -423,5 +438,3 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
-
-export default MetaScreen;

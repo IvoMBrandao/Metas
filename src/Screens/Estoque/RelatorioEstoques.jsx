@@ -9,94 +9,143 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getDatabase, ref, get } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
 
-const RelatorioEstoqueScreen = () => {
+const RelatorioEstoqueScreen = ({ route }) => {
+  // Se precisar de lojaId, receba em route.params. Se não, remova.
+  const { lojaId } = route.params || {};
+  const { user } = useAuthContext();
+
   const [relatorio, setRelatorio] = useState([]);
   const [loading, setLoading] = useState(false);
   const [produtos, setProdutos] = useState([]);
   const [filtroAtual, setFiltroAtual] = useState('cod');
   const [valorFiltro, setValorFiltro] = useState('');
-  const [categorias, setCategorias] = useState([]);
   const [dataInicial, setDataInicial] = useState('');
   const [dataFinal, setDataFinal] = useState('');
   const [mediaTaxa, setMediaTaxa] = useState(0);
   const [mediaDiferenca, setMediaDiferenca] = useState(0);
 
   useEffect(() => {
-    const carregarDados = async () => {
-      try {
-        const dataProdutos = await AsyncStorage.getItem('estoqueData');
-        const produtos = dataProdutos ? JSON.parse(dataProdutos) : [];
-        setProdutos(produtos);
-
-        const categoriasUnicas = [...new Set(produtos.map((produto) => produto.categoria).filter(Boolean))];
-        setCategorias(categoriasUnicas);
-      } catch (error) {
-        console.error('Erro ao carregar produtos:', error);
-        Alert.alert('Erro', 'Não foi possível carregar os produtos.');
-      }
-    };
-
-    carregarDados();
+    carregarProdutos();
   }, []);
+
+  const carregarProdutos = async () => {
+    try {
+      const db = getDatabase();
+      // Carregamos todos produtos (se for uma loja específica, use /lojaId/estoque/produtos).
+      const produtosRef = ref(db, `users/${user.uid}/lojas/${lojaId}/estoque/produtos`);
+      const snap = await get(produtosRef);
+      if (snap.exists()) {
+        const data = snap.val();
+        const arr = Object.keys(data).map((key) => data[key]);
+        setProdutos(arr);
+      } else {
+        setProdutos([]);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar produtos:', error);
+      Alert.alert('Erro', 'Não foi possível carregar os produtos do Firebase.');
+    }
+  };
 
   const formatarData = (texto) => {
     let formatado = texto.replace(/\D/g, '').slice(0, 8);
-    if (formatado.length >= 5) formatado = `${formatado.slice(0, 2)}/${formatado.slice(2, 4)}/${formatado.slice(4)}`;
-    else if (formatado.length >= 3) formatado = `${formatado.slice(0, 2)}/${formatado.slice(2)}`;
+    if (formatado.length >= 5) {
+      formatado = `${formatado.slice(0, 2)}/${formatado.slice(2, 4)}/${formatado.slice(4)}`;
+    } else if (formatado.length >= 3) {
+      formatado = `${formatado.slice(0, 2)}/${formatado.slice(2)}`;
+    }
     return formatado;
   };
 
-  const calcularMedia = (relatorio) => {
-    const taxas = relatorio.filter((item) => item.taxaAumento !== 'N/A').map((item) => parseFloat(item.taxaAumento.replace('%', '')));
-    const aumentosReais = relatorio.filter((item) => item.diferenca !== 'N/A').map((item) => parseFloat(item.diferenca.replace(/[^\d,-]/g, '').replace(',', '.')));
+  const calcularMedia = (dados) => {
+    const taxas = dados
+      .filter((item) => item.taxaAumento !== 'N/A')
+      .map((item) => parseFloat(item.taxaAumento.replace('%', '')));
+    const aumentosReais = dados
+      .filter((item) => item.diferenca !== 'N/A')
+      .map((item) =>
+        parseFloat(
+          item.diferenca.replace(/[^\d,-]/g, '').replace(',', '.')
+        )
+      );
 
-    const mediaTaxa = taxas.length ? (taxas.reduce((acc, val) => acc + val, 0) / taxas.length).toFixed(2) : 0;
-    const mediaAumentoReal = aumentosReais.length ? (aumentosReais.reduce((acc, val) => acc + val, 0) / aumentosReais.length).toFixed(2) : 0;
+    const mediaT = taxas.length
+      ? (taxas.reduce((acc, val) => acc + val, 0) / taxas.length).toFixed(2)
+      : 0;
+    const mediaA = aumentosReais.length
+      ? (aumentosReais.reduce((acc, val) => acc + val, 0) / aumentosReais.length).toFixed(2)
+      : 0;
 
-    setMediaTaxa(mediaTaxa);
-    setMediaDiferenca(mediaAumentoReal);
+    setMediaTaxa(mediaT);
+    setMediaDiferenca(mediaA);
   };
 
   const gerarRelatorio = async () => {
     setLoading(true);
     try {
-      const dataMovimentacoes = await AsyncStorage.getItem('movimentacoesData');
-      const movimentacoes = dataMovimentacoes ? JSON.parse(dataMovimentacoes) : [];
+      const db = getDatabase();
+      const movRef = ref(db, `users/${user.uid}/movimentacoesData`);
+      const movSnap = await get(movRef);
+      if (!movSnap.exists()) {
+        Alert.alert('Atenção', 'Não há movimentações registradas.');
+        setRelatorio([]);
+        setLoading(false);
+        return;
+      }
+      const movimentacoes = Object.keys(movSnap.val()).map((key) => movSnap.val()[key]);
 
-      const produtoMap = produtos.reduce((acc, produto) => {
-        acc[produto.id] = produto;
-        return acc;
-      }, {});
+      // criar um mapa de produtoId -> produto
+      const produtoMap = {};
+      produtos.forEach((prod) => {
+        produtoMap[prod.id] = prod;
+      });
 
-      const entradasValidas = movimentacoes.filter((mov) => mov.tipoMovimento === 'entrada' && mov.data && mov.valorCompra !== undefined && mov.produtoId);
+      // Filtramos somente entradas com data e valorCompra
+      let entradasValidas = movimentacoes.filter(
+        (mov) => mov.tipoMovimento === 'entrada' && mov.data && mov.valorCompra !== undefined
+      );
 
-      let entradasFiltradas = entradasValidas;
-
+      // Aplica filtros
       if (filtroAtual === 'cod' && valorFiltro) {
-        entradasFiltradas = entradasFiltradas.filter((mov) => produtoMap[mov.produtoId]?.codigo?.toLowerCase().includes(valorFiltro.toLowerCase()));
+        entradasValidas = entradasValidas.filter((mov) => {
+          const prod = produtoMap[mov.produtoId];
+          return prod?.codigo?.toLowerCase().includes(valorFiltro.toLowerCase());
+        });
       } else if (filtroAtual === 'nome' && valorFiltro) {
-        entradasFiltradas = entradasFiltradas.filter((mov) => produtoMap[mov.produtoId]?.nome?.toLowerCase().includes(valorFiltro.toLowerCase()));
+        entradasValidas = entradasValidas.filter((mov) => {
+          const prod = produtoMap[mov.produtoId];
+          return prod?.nome?.toLowerCase().includes(valorFiltro.toLowerCase());
+        });
       } else if (filtroAtual === 'categoria' && valorFiltro) {
-        entradasFiltradas = entradasFiltradas.filter((mov) => produtoMap[mov.produtoId]?.categoria === valorFiltro);
+        entradasValidas = entradasValidas.filter((mov) => {
+          const prod = produtoMap[mov.produtoId];
+          return prod?.categoria === valorFiltro;
+        });
       } else if (filtroAtual === 'data' && dataInicial && dataFinal) {
-        const dataInicio = new Date(dataInicial.split('/').reverse().join('-'));
-        const dataFim = new Date(dataFinal.split('/').reverse().join('-'));
+        const [diaI, mesI, anoI] = dataInicial.split('/');
+        const [diaF, mesF, anoF] = dataFinal.split('/');
+        const dataIni = new Date(+anoI, mesI - 1, +diaI);
+        const dataFim = new Date(+anoF, mesF - 1, +diaF);
         dataFim.setHours(23, 59, 59, 999);
 
-        entradasFiltradas = entradasFiltradas.filter((mov) => {
+        entradasValidas = entradasValidas.filter((mov) => {
           const dataMov = new Date(mov.data);
-          return dataMov >= dataInicio && dataMov <= dataFim;
+          return dataMov >= dataIni && dataMov <= dataFim;
         });
       }
 
-      const entradas = entradasFiltradas.map((mov) => ({
-        data: new Date(mov.data),
-        valorInicial: parseFloat(mov.valorCompra),
-        produtoNome: produtoMap[mov.produtoId]?.nome || 'Produto Desconhecido',
-      }));
+      const entradas = entradasValidas.map((mov) => {
+        return {
+          data: new Date(mov.data),
+          valorInicial: parseFloat(mov.valorCompra),
+          produtoNome: produtoMap[mov.produtoId]?.nome || 'Produto Desconhecido',
+        };
+      });
 
+      // Ordena
       entradas.sort((a, b) => a.data - b.data);
 
       const relatorioGerado = entradas.map((entrada, index) => {
@@ -109,7 +158,6 @@ const RelatorioEstoqueScreen = () => {
             taxaAumento: 'N/A',
           };
         }
-
         const valorAnterior = entradas[index - 1].valorInicial;
         const diferenca = entrada.valorInicial - valorAnterior;
         const taxaAumento = ((diferenca / valorAnterior) * 100).toFixed(2) + '%';
@@ -118,7 +166,10 @@ const RelatorioEstoqueScreen = () => {
           data: entrada.data.toLocaleDateString('pt-BR'),
           valorInicial: entrada.valorInicial,
           produtoNome: entrada.produtoNome,
-          diferenca: diferenca.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+          diferenca: diferenca.toLocaleString('pt-BR', {
+            style: 'currency',
+            currency: 'BRL',
+          }),
           taxaAumento,
         };
       });
@@ -162,7 +213,11 @@ const RelatorioEstoqueScreen = () => {
         ) : (
           <TextInput
             placeholder={`Filtrar por ${
-              filtroAtual === 'cod' ? 'Código' : filtroAtual === 'nome' ? 'Nome' : 'Categoria'
+              filtroAtual === 'cod'
+                ? 'Código'
+                : filtroAtual === 'nome'
+                ? 'Nome'
+                : 'Categoria'
             }`}
             value={valorFiltro}
             onChangeText={setValorFiltro}
@@ -171,7 +226,13 @@ const RelatorioEstoqueScreen = () => {
         )}
         <TouchableOpacity style={styles.filterButton} onPress={alternarFiltro}>
           <Text style={styles.filterButtonText}>
-            {filtroAtual === 'cod' ? 'Código' : filtroAtual === 'nome' ? 'Nome' : filtroAtual === 'categoria' ? 'Categoria' : 'Data'}
+            {filtroAtual === 'cod'
+              ? 'Código'
+              : filtroAtual === 'nome'
+              ? 'Nome'
+              : filtroAtual === 'categoria'
+              ? 'Categoria'
+              : 'Data'}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.filterButton} onPress={gerarRelatorio}>
@@ -188,14 +249,17 @@ const RelatorioEstoqueScreen = () => {
         <>
           <FlatList
             data={relatorio}
-            keyExtractor={(item, index) => index.toString()}
+            keyExtractor={(_item, index) => index.toString()}
             renderItem={({ item }) => (
               <View style={styles.row}>
                 <Text style={styles.cell}>{item.data || 'N/A'}</Text>
                 <Text style={styles.cell}>{item.produtoNome || 'N/A'}</Text>
                 <Text style={styles.cell}>
                   {item.valorInicial !== undefined
-                    ? item.valorInicial.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+                    ? item.valorInicial.toLocaleString('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      })
                     : 'N/A'}
                 </Text>
                 <Text style={styles.cell}>{item.diferenca || 'N/A'}</Text>
@@ -213,9 +277,14 @@ const RelatorioEstoqueScreen = () => {
             )}
           />
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Média da Taxa de Aumento: {mediaTaxa}%</Text>
             <Text style={styles.footerText}>
-              Média do Aumento em Reais: R$ {mediaDiferenca.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              Média da Taxa de Aumento: {mediaTaxa}%
+            </Text>
+            <Text style={styles.footerText}>
+              Média do Aumento em Reais: R${' '}
+              {Number(mediaDiferenca).toLocaleString('pt-BR', {
+                minimumFractionDigits: 2,
+              })}
             </Text>
           </View>
         </>
@@ -223,6 +292,8 @@ const RelatorioEstoqueScreen = () => {
     </View>
   );
 };
+
+export default RelatorioEstoqueScreen;
 
 const styles = StyleSheet.create({
   container: {
@@ -307,5 +378,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-
-export default RelatorioEstoqueScreen;

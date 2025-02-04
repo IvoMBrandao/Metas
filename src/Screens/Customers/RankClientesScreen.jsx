@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,74 +8,92 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { getDatabase, ref, onValue } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
 
 const { width } = Dimensions.get('window');
 
-const RankClientesScreen = ({ navigation }) => {
+const RankClientesScreen = ({ route, navigation }) => {
+  // Recebe o lojaId via route.params
+  const { lojaId } = route.params || {};
+  const { user } = useAuthContext();
   const [rankedClients, setRankedClients] = useState([]);
   const [metaOptions, setMetaOptions] = useState([]);
   const [selectedMeta, setSelectedMeta] = useState('all');
   const [showMetaList, setShowMetaList] = useState(false);
 
-  useEffect(() => {
-    fetchMetaOptions();
-    fetchClientRankings();
-  }, [selectedMeta]);
+  // Neste exemplo, vamos supor que as metas e vendas estejam salvas no Firebase
+  // e que cada meta tenha um nó "sales" com as vendas. Você pode ajustar conforme sua estrutura.
 
-  const fetchMetaOptions = async () => {
-    try {
-      const savedData = await AsyncStorage.getItem('financeData');
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        const options = parsedData.map((meta) => ({
-          id: meta.id,
-          name: meta.name || `Meta ${meta.id}`,
+  // Função para carregar as opções de metas (exemplo simples)
+  const fetchMetaOptions = useCallback(() => {
+    if (!user || !user.uid || !lojaId) return;
+    const db = getDatabase();
+    const metasRef = ref(db, `users/${user.uid}/lojas/${lojaId}/metas`);
+    onValue(metasRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const options = Object.keys(data).map((key) => ({
+          id: key,
+          name: data[key].name || `Meta ${key}`,
         }));
         setMetaOptions([{ id: 'all', name: 'Todas as Metas' }, ...options]);
       }
-    } catch (error) {
+    }, (error) => {
       Alert.alert('Erro', 'Não foi possível carregar as metas.');
       console.error('Erro ao carregar metas:', error);
-    }
-  };
+    });
+  }, [user, lojaId]);
 
-  const fetchClientRankings = async () => {
-    try {
-      const savedData = await AsyncStorage.getItem('financeData');
-      if (savedData) {
-        const parsedData = JSON.parse(savedData);
-
-        const metasFiltradas =
-          selectedMeta === 'all'
-            ? parsedData
-            : parsedData.filter((meta) => meta.id === selectedMeta);
-
-        const allSales = metasFiltradas.flatMap((meta) => meta.sales || []);
-
+  // Função para calcular o ranking de clientes com base nas vendas de todas as metas (ou de uma meta específica)
+  const fetchClientRankings = useCallback(() => {
+    if (!user || !user.uid || !lojaId) return;
+    const db = getDatabase();
+    const metasRef = ref(db, `users/${user.uid}/lojas/${lojaId}/metas`);
+    onValue(metasRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        // Filtra as metas, se necessário
+        const metas = selectedMeta === 'all'
+          ? Object.values(data)
+          : Object.values(data).filter((meta) => meta.id === selectedMeta);
+        // Junta todas as vendas
+        const allSales = [];
+        metas.forEach((meta) => {
+          if (meta.sales) {
+            allSales.push(...Object.values(meta.sales));
+          }
+        });
+        // Calcula totais por cliente
         const clientTotals = allSales.reduce((acc, sale) => {
           const client = sale.customer || 'Cliente Não Informado';
-          acc[client] = acc[client] || { total: 0, purchases: [] };
+          if (!acc[client]) acc[client] = { total: 0, purchases: [] };
           acc[client].total += sale.value;
           acc[client].purchases.push(sale);
           return acc;
         }, {});
-
         const ranked = Object.entries(clientTotals)
-          .map(([client, data]) => ({
-            client,
-            total: data.total,
-            purchases: data.purchases,
-          }))
+          .map(([client, data]) => ({ client, total: data.total, purchases: data.purchases }))
           .sort((a, b) => b.total - a.total);
-
         setRankedClients(ranked);
       }
-    } catch (error) {
+    }, (error) => {
       Alert.alert('Erro', 'Não foi possível carregar os dados dos clientes.');
       console.error('Erro ao carregar dados dos clientes:', error);
-    }
-  };
+    });
+  }, [user, lojaId, selectedMeta]);
+
+  useEffect(() => {
+    fetchMetaOptions();
+  }, [fetchMetaOptions]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchClientRankings();
+    }, [fetchClientRankings])
+  );
 
   const getRankStyle = (index) => {
     if (index === 0) return styles.gold;
@@ -124,7 +142,6 @@ const RankClientesScreen = ({ navigation }) => {
       <View style={styles.titleWrapper}>
         <Text style={styles.title}>Ranking de Clientes</Text>
       </View>
-
       <TouchableOpacity
         style={styles.metaSelector}
         onPress={() => setShowMetaList((prev) => !prev)}
@@ -133,7 +150,6 @@ const RankClientesScreen = ({ navigation }) => {
           {metaOptions.find((meta) => meta.id === selectedMeta)?.name || 'Selecionar Meta'}
         </Text>
       </TouchableOpacity>
-
       {showMetaList && (
         <FlatList
           data={metaOptions}
@@ -142,27 +158,22 @@ const RankClientesScreen = ({ navigation }) => {
           style={styles.metaList}
         />
       )}
-
-      {!showMetaList && rankedClients.length > 0 ? (
+      {rankedClients.length > 0 ? (
         <FlatList
           data={rankedClients}
           keyExtractor={(item, index) => index.toString()}
           renderItem={renderClientItem}
           style={styles.clientsList}
         />
-      ) : !showMetaList ? (
+      ) : (
         <Text style={styles.noClients}>Nenhum cliente encontrado.</Text>
-      ) : null}
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    backgroundColor: '#F7F9FC',
-  },
+  container: { flex: 1, padding: 20, backgroundColor: '#F7F9FC' },
   background: {
     position: 'absolute',
     width: width * 1.5,
@@ -174,17 +185,8 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: width * 0.75,
     zIndex: 0,
   },
-  titleWrapper: {
-    alignItems: 'center',
-    marginBottom: 20,
-    zIndex: 1,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#FFF',
-    textAlign: 'center',
-  },
+  titleWrapper: { alignItems: 'center', marginBottom: 20, zIndex: 1 },
+  title: { fontSize: 24, fontWeight: '600', color: '#FFF', textAlign: 'center' },
   metaSelector: {
     padding: 10,
     backgroundColor: '#3A86FF',
@@ -192,28 +194,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-  metaSelectorText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  metaList: {
-    marginBottom: 20,
-  },
+  metaSelectorText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  metaList: { marginBottom: 20 },
   metaItem: {
     padding: 10,
     backgroundColor: '#E0E0E0',
     borderRadius: 8,
     marginVertical: 5,
   },
-  metaItemText: {
-    fontSize: 16,
-    color: '#2D3142',
-    textAlign: 'center',
-  },
-  clientsList: {
-    flex: 1,
-  },
+  metaItemText: { fontSize: 16, color: '#2D3142', textAlign: 'center' },
+  clientsList: { flex: 1 },
   clientItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -227,9 +217,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  highlight: {
-    backgroundColor: '#FFF4E6',
-  },
+  highlight: { backgroundColor: '#FFF4E6' },
   rankContainer: {
     width: 40,
     height: 40,
@@ -238,42 +226,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 15,
   },
-  rank: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFF',
-  },
-  clientInfo: {
-    flex: 1,
-  },
-  clientName: {
-    fontSize: 16,
-    color: '#3A86FF',
-    marginBottom: 5,
-  },
-  clientTotal: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#27AE60',
-  },
-  noClients: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#BDBDBD',
-    marginTop: 20,
-  },
-  gold: {
-    backgroundColor: '#FFD700',
-  },
-  silver: {
-    backgroundColor: '#C0C0C0',
-  },
-  bronze: {
-    backgroundColor: '#CD7F32',
-  },
-  defaultRank: {
-    backgroundColor: '#3A86FF',
-  },
+  rank: { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
+  clientInfo: { flex: 1 },
+  clientName: { fontSize: 16, color: '#3A86FF', marginBottom: 5 },
+  clientTotal: { fontSize: 16, fontWeight: 'bold', color: '#27AE60' },
+  noClients: { textAlign: 'center', fontSize: 16, color: '#BDBDBD', marginTop: 20 },
+  gold: { backgroundColor: '#FFD700' },
+  silver: { backgroundColor: '#C0C0C0' },
+  bronze: { backgroundColor: '#CD7F32' },
+  defaultRank: { backgroundColor: '#3A86FF' },
 });
 
 export default RankClientesScreen;

@@ -7,18 +7,26 @@ import {
   Animated,
   Dimensions,
   TouchableWithoutFeedback,
+  Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { AuthContext } from '../contexts/auth'; // Importa o contexto de autenticação
+
+// Importe seu contexto que contém logout e possivelmente selectedStoreId
+import { AuthContext } from '../contexts/auth';
 
 const { width } = Dimensions.get('window');
 
 const SideMenu = ({ navigation, children }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isReportsOpen, setIsReportsOpen] = useState(false);
-  const menuAnimation = useState(new Animated.Value(-width * 0.7))[0];
-  const { logout } = useContext(AuthContext); // Usa o logout do contexto
 
+  // Animação do menu lateral
+  const menuAnimation = useState(new Animated.Value(-width * 0.7))[0];
+
+  // Do contexto
+  const { logout, selectedStoreId } = useContext(AuthContext);
+
+  // Função para abrir/fechar menu
   const toggleMenu = (forceClose = false) => {
     const shouldClose = forceClose || isMenuOpen;
     if (!shouldClose) {
@@ -31,20 +39,23 @@ const SideMenu = ({ navigation, children }) => {
     }).start(() => {
       if (shouldClose) {
         setIsMenuOpen(false);
-        setIsReportsOpen(false); // Fecha o submenu quando o menu principal fecha
+        setIsReportsOpen(false); // Fecha submenu
       }
     });
   };
 
+  // Abre/fecha submenu de Relatórios
   const toggleReportsMenu = () => {
     setIsReportsOpen(!isReportsOpen);
   };
 
-  const handleMenuNavigation = (screen) => {
+  // Navegar para qualquer tela
+  const handleMenuNavigation = (screen, params = {}) => {
     toggleMenu(true);
-    navigation.navigate(screen);
+    navigation.navigate(screen, params);
   };
 
+  // Lidar com logout
   const handleLogout = async () => {
     try {
       await logout();
@@ -53,15 +64,31 @@ const SideMenu = ({ navigation, children }) => {
     }
   };
 
+  // Função específica para ir ao Estoque
+  const handleEstoquePress = () => {
+    if (!selectedStoreId) {
+      Alert.alert(
+        'Loja não selecionada',
+        'Selecione primeiro uma loja antes de acessar o estoque.'
+      );
+      return;
+    }
+    // Navega enviando a lojaId
+    handleMenuNavigation('Estoque', { lojaId: selectedStoreId });
+  };
+
   return (
     <View style={{ flex: 1 }}>
-      {/* Menu lateral */}
+      {/* MENU LATERAL ANIMADO */}
       <Animated.View style={[styles.sideMenu, { left: menuAnimation }]}>
+        {/* BOTÃO FECHAR */}
         <TouchableOpacity style={styles.closeButton} onPress={() => toggleMenu(true)}>
           <Icon name="close" size={24} color="#FFF" />
         </TouchableOpacity>
+
         <Text style={styles.menuTitle}>Menu</Text>
 
+        {/* Exemplo de menu "Relatórios" com submenu */}
         <TouchableOpacity style={styles.menuItem} onPress={toggleReportsMenu}>
           <View style={styles.menuItemRow}>
             <Text style={styles.menuItemText}>Relatórios</Text>
@@ -72,47 +99,47 @@ const SideMenu = ({ navigation, children }) => {
             />
           </View>
         </TouchableOpacity>
+
         {isReportsOpen && (
           <View style={styles.subMenu}>
             <TouchableOpacity
               style={styles.subMenuItem}
               onPress={() => handleMenuNavigation('Report')}
             >
-              <Text style={styles.subMenuItemText}>Relatorios detalhado</Text>
+              <Text style={styles.subMenuItemText}>Relatórios detalhados</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.subMenuItem}
               onPress={() => handleMenuNavigation('ReportScreen')}
             >
-              <Text style={styles.subMenuItemText}>Relatorios de Crediário</Text>
+              <Text style={styles.subMenuItemText}>Relatórios de Crediário</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.subMenuItem}
               onPress={() => handleMenuNavigation('SalesReportScreen')}
             >
-              <Text style={styles.subMenuItemText}>Relatorios</Text>
+              <Text style={styles.subMenuItemText}>Relatórios de Vendas</Text>
             </TouchableOpacity>
-
             <TouchableOpacity
               style={styles.subMenuItem}
               onPress={() => handleMenuNavigation('ComparativeReportScreen')}
             >
-              <Text style={styles.subMenuItemText}>Relatorio Comparativo</Text>
+              <Text style={styles.subMenuItemText}>Relatório Comparativo</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* Outras opções */}
+        {/* OUTRAS OPÇÕES DE MENU */}
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={() => handleMenuNavigation('Customers')}
+          onPress={() => handleMenuNavigation('Customers',{ lojaId: selectedStoreId })}
         >
           <Text style={styles.menuItemText}>Clientes</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={() => handleMenuNavigation('CreditoScreen')}
+          onPress={() => handleMenuNavigation('CreditoScreen',{ lojaId: selectedStoreId })}
         >
           <Text style={styles.menuItemText}>Compras no Crediário</Text>
         </TouchableOpacity>
@@ -126,26 +153,27 @@ const SideMenu = ({ navigation, children }) => {
 
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={() => handleMenuNavigation('CrediarioResumo')}
+          onPress={() => handleMenuNavigation('CrediarioResumo',{ lojaId: selectedStoreId })}
         >
-          <Text style={styles.menuItemText}>Resumo do Crediario</Text>
+          <Text style={styles.menuItemText}>Resumo do Crediário</Text>
         </TouchableOpacity>
 
+        {/* AQUI trocamos para usar handleEstoquePress */}
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={() => handleMenuNavigation('Estoque')}
+          onPress={handleEstoquePress}
         >
           <Text style={styles.menuItemText}>Estoque</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={() => handleMenuNavigation('CashRegisterScreen')}
+          onPress={() => handleMenuNavigation('CashRegisterScreen',{ lojaId: selectedStoreId })}
         >
           <Text style={styles.menuItemText}>Caixa</Text>
         </TouchableOpacity>
 
-        {/* Botão de logout na parte inferior direita */}
+        {/* BOTÃO DE LOGOUT */}
         <View style={styles.logoutContainer}>
           <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
             <Icon name="log-out-outline" size={24} color="#FFF" />
@@ -154,29 +182,29 @@ const SideMenu = ({ navigation, children }) => {
         </View>
       </Animated.View>
 
-      {/* Área clicável para fechar o menu */}
+      {/* FECHAR MENU AO CLICAR FORA */}
       {isMenuOpen && (
         <TouchableWithoutFeedback onPress={() => toggleMenu(true)}>
           <View style={styles.overlay} />
         </TouchableWithoutFeedback>
       )}
 
-      {/* Botão para abrir o menu */}
+      {/* BOTÃO ABRIR MENU */}
       {!isMenuOpen && (
-        <TouchableOpacity
-          style={styles.menuButton}
-          onPress={() => toggleMenu()}
-        >
+        <TouchableOpacity style={styles.menuButton} onPress={() => toggleMenu()}>
           <Icon name="menu" size={30} color="#FFF" />
         </TouchableOpacity>
       )}
 
-      {/* Conteúdo da tela */}
+      {/* CONTEÚDO PRINCIPAL */}
       <View style={{ flex: 1, marginTop: 20 }}>{children}</View>
     </View>
   );
 };
 
+export default SideMenu;
+
+// ESTILOS
 const styles = StyleSheet.create({
   sideMenu: {
     position: 'absolute',
@@ -235,7 +263,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     position: 'absolute',
-    top: 0,
+    top: 0, 
     left: 0,
     width: '100%',
     height: '100%',
@@ -260,5 +288,3 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
 });
-
-export default SideMenu;

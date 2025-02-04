@@ -1,53 +1,50 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-} from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { getDatabase, ref, update } from 'firebase/database';
+import { useAuthContext } from '../../contexts/auth';
 
-export default function EditCustomerScreen({ route, navigation }) {
-  const { customer, index } = route.params;
+const EditCustomerScreen = ({ route, navigation }) => {
+  const { customer, lojaId } = route.params;
+  const { user } = useAuthContext();
+
+  if (!lojaId) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.errorText}>Erro: Loja não especificada.</Text>
+      </View>
+    );
+  }
+
   const [name, setName] = useState(customer?.name || '');
   const [phone, setPhone] = useState(customer?.phone || '');
   const [dob, setDob] = useState(customer?.dob || '');
 
-  const isLeapYear = (year) => {
-    return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
-  };
+  // Funções auxiliares para data
+  const isLeapYear = (year) =>
+    (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 
   const getDaysInMonth = (month, year) => {
-    if (month === 2) {
-      return isLeapYear(year) ? 29 : 28;
-    }
+    if (month === 2) return isLeapYear(year) ? 29 : 28;
     return [4, 6, 9, 11].includes(month) ? 30 : 31;
   };
 
   const validateDob = (dob) => {
     const parts = dob.split('/');
     if (parts.length !== 3) return false;
-
     const day = parseInt(parts[0], 10);
     const month = parseInt(parts[1], 10);
     const year = parseInt(parts[2], 10);
-
     if (isNaN(day) || isNaN(month) || isNaN(year)) return false;
     if (day < 1 || month < 1 || month > 12) return false;
-
     const maxDays = getDaysInMonth(month, year);
-    if (day > maxDays) return false;
-
-    return true;
+    return day <= maxDays;
   };
 
   const formatDob = (text) => {
-    let cleaned = text.replace(/\D/g, ''); // Remove caracteres não numéricos
-    if (cleaned.length > 2) cleaned = `${cleaned.slice(0, 2)}/${cleaned.slice(2)}`;
-    if (cleaned.length > 5) cleaned = `${cleaned.slice(0, 5)}/${cleaned.slice(5, 9)}`;
-    setDob(cleaned);
+    let cleaned = text.replace(/\D/g, '');
+    if (cleaned.length <= 2) return cleaned;
+    if (cleaned.length <= 4) return `${cleaned.slice(0, 2)}/${cleaned.slice(2)}`;
+    return `${cleaned.slice(0, 2)}/${cleaned.slice(2, 4)}/${cleaned.slice(4, 8)}`;
   };
 
   const saveChanges = async () => {
@@ -55,32 +52,30 @@ export default function EditCustomerScreen({ route, navigation }) {
       Alert.alert('Erro', 'O campo Nome é obrigatório.');
       return;
     }
-
     if (dob && !validateDob(dob)) {
-      Alert.alert(
-        'Erro',
-        'A data de nascimento é inválida. Verifique o formato (DD/MM/AAAA) e os valores.'
-      );
+      Alert.alert('Erro', 'A data de nascimento é inválida. Use o formato DD/MM/AAAA.');
       return;
     }
-
+    if (!user || !user.uid) {
+      Alert.alert('Erro', 'Usuário não autenticado.');
+      return;
+    }
     try {
-      const savedCustomers = await AsyncStorage.getItem('customersData');
-      const parsedCustomers = savedCustomers ? JSON.parse(savedCustomers) : [];
-      parsedCustomers[index] = { ...parsedCustomers[index], name, phone, dob };
-      await AsyncStorage.setItem('customersData', JSON.stringify(parsedCustomers));
+      const db = getDatabase();
+      const customerRef = ref(db, `users/${user.uid}/lojas/${lojaId}/clientes/${customer.id}`);
+      const updatedCustomer = { name, phone, dob };
+      await update(customerRef, updatedCustomer);
       Alert.alert('Sucesso', 'Dados atualizados com sucesso!');
       navigation.goBack();
     } catch (error) {
-      Alert.alert('Erro', 'Ocorreu um erro ao salvar os dados.');
       console.error('Erro ao salvar dados:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao salvar os dados.');
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Editar Cliente</Text>
-
+      <Text style={styles.title}>Editar Cliente (Loja {lojaId})</Text>
       <TextInput
         style={styles.input}
         placeholder="Nome (obrigatório)"
@@ -88,7 +83,6 @@ export default function EditCustomerScreen({ route, navigation }) {
         onChangeText={setName}
         placeholderTextColor="#BDBDBD"
       />
-
       <TextInput
         style={styles.input}
         placeholder="Telefone"
@@ -97,30 +91,24 @@ export default function EditCustomerScreen({ route, navigation }) {
         onChangeText={setPhone}
         placeholderTextColor="#BDBDBD"
       />
-
       <TextInput
         style={styles.input}
         placeholder="Data de Nascimento (DD/MM/AAAA)"
         value={dob}
         keyboardType="numeric"
-        onChangeText={formatDob}
+        onChangeText={(text) => setDob(formatDob(text))}
         placeholderTextColor="#BDBDBD"
-        maxLength={10} // Limita a entrada a 10 caracteres (DD/MM/AAAA)
+        maxLength={10}
       />
-
       <TouchableOpacity style={styles.saveButton} onPress={saveChanges}>
         <Text style={styles.saveButtonText}>Salvar Alterações</Text>
       </TouchableOpacity>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    backgroundColor: '#F7F9FC',
-  },
+  container: { flex: 1, padding: 20, backgroundColor: '#F7F9FC' },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -144,9 +132,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
   },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-  },
+  saveButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '600' },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  errorText: { fontSize: 16, color: 'red', textAlign: 'center', padding: 20 },
 });
+
+export default EditCustomerScreen;
